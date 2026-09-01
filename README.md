@@ -2,7 +2,7 @@
 
 So uh... never really done github before, or C++... or anything about what i just made but somehow it all works.
 
-Anyways it's quite simple. A while ago Valve released an "HMDless" driver for OpenVR called the "null driver". It's essentially a fully customizable virtual VR headset. Normal functionality of the driver is very limited, really only allowing for launching of VR games and nothing else. Using [ar-zadeh's modified null driver](https://github.com/ar-zadeh](https://github.com/ar-zadeh/VR-Emulator-Driver) and the source files they provided i was able to make my own version of the driver with a few changes. These mostly include foundational changes like modifying the way the HMD and controller positional and rotational data is read and written, along with changing all of the hardcoded keybinds.
+Anyways it's quite simple. A while ago Valve released an "HMDless" driver for OpenVR called the "null driver". It's essentially a fully customizable virtual VR headset. Normal functionality of the driver is very limited, really only allowing for launching of VR games and nothing else. Using [ar-zadeh's modified null driver](https://github.com/ar-zadeh/VR-Emulator-Driver) and the source files they provided i was able to make my own version of the driver with a few changes. These mostly include foundational changes like modifying the way the HMD and controller positional and rotational data is read and written, along with changing all of the hardcoded keybinds.
 
 This repo is just one part of the whole thing and is really only here so the AHK program i made can download the correct files.
 
