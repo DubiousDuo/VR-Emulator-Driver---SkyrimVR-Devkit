@@ -1,0 +1,16 @@
+{
+    "driver_null": {
+        "enable": true,
+        "loadPriority": -999,
+        "serialNumber": "DubiousDodo's Null Driver",
+        "modelNumber": "DubiousDodo's Null Driver",
+        "windowX": 0,
+        "windowY": 0,
+        "windowWidth": 1920,
+        "windowHeight": 1080,
+        "renderWidth": 2000,
+        "renderHeight": 2000,
+        "secondsFromVsyncToPhotons": 0.01111111,
+        "displayFrequency": 30.0
+    }
+}
