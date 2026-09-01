@@ -11,3 +11,5 @@ Either way i figure adding some info here wouldn't hurt.
 The basics are this. WASD, Space and Control still work natively in SkyrimVR, so those are untouched. You can move around, jump and crouch to your hearts content, but you can't look around. With the modified null driver you can inject HMD rotational data and emulate pitch, yaw and roll movement. Roll is mostly useless for this project but it still is an option. Meaning that using the arrow keys you can look left, right, up and down!!!!
 
 I guess that's it tbh, idk what else to say besides "Wow! I don't have to put the damn headset on every time i want to test a papyrus script change!!!111!1!!!1!1"
+
+Oh yeah, this was also made in Visual Studio 2022 and with the [OpenVR-1.26.7](https://github.com/ValveSoftware/openvr/releases#release-v1.26.7) 
