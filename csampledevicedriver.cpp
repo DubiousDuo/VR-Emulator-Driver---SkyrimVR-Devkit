@@ -10,9 +10,19 @@
 using namespace vr;
 
 //Head tracking vars
-static double yaw = 0, pitch = 0, roll = 0;
 static double pX = 0, pY = 0, pZ = 0;
-static double t0, t1, t2, t3, t4, t5;
+static double orientW = 1.0, orientX = 0.0, orientY = 0.0, orientZ = 0.0;
+
+static void quatMultiply(
+    double aw, double ax, double ay, double az,
+    double bw, double bx, double by, double bz,
+    double& rw, double& rx, double& ry, double& rz)
+{
+    rw = aw * bw - ax * bx - ay * by - az * bz;
+    rx = aw * bx + ax * bw + ay * bz - az * by;
+    ry = aw * by - ax * bz + ay * bw + az * bx;
+    rz = aw * bz + ax * by - ay * bx + az * bw;
+}
 
 CSampleDeviceDriver::CSampleDeviceDriver()
 {
@@ -214,19 +224,22 @@ vr::DriverPose_t CSampleDeviceDriver::GetPose()
     if (posFile.is_open()) {
         std::string line;
         std::getline(posFile, line);
-        std::istringstream iss(line);
-        double posChanges[3] = { 0 };
-        iss >> posChanges[0] >> posChanges[1] >> posChanges[2];
-        pX += posChanges[0];
-        pY += posChanges[1];
-        pZ += posChanges[2];
         posFile.close();
 
-        // Reset position changes to zero
+        // Reset before applying so repeated RunFrame calls don't stack
         std::ofstream resetPosFile("C:/actions/headset_position_changes.txt");
         if (resetPosFile.is_open()) {
             resetPosFile << "0 0 0";
             resetPosFile.close();
+        }
+
+        std::istringstream iss(line);
+        double posChanges[3] = { 0 };
+        iss >> posChanges[0] >> posChanges[1] >> posChanges[2];
+        if (posChanges[0] != 0 || posChanges[1] != 0 || posChanges[2] != 0) {
+            pX += posChanges[0];
+            pY += posChanges[1];
+            pZ += posChanges[2];
         }
     }
 
@@ -235,37 +248,44 @@ vr::DriverPose_t CSampleDeviceDriver::GetPose()
     if (rotFile.is_open()) {
         std::string line;
         std::getline(rotFile, line);
-        std::istringstream iss(line);
-        double rotChanges[3] = { 0 };
-        iss >> rotChanges[0] >> rotChanges[1] >> rotChanges[2];
-        yaw += DEG_TO_RAD(rotChanges[0]);
-        pitch += DEG_TO_RAD(rotChanges[1]);
-        roll += DEG_TO_RAD(rotChanges[2]);
         rotFile.close();
-        DriverLog("cyaw = %.2f", yaw);
-        DriverLog("cyaw = %.2f", pitch);
-        DriverLog("cyaw = %.2f", roll);
-        // Reset rotation changes to zero
-        std::ofstream resetRotFile("C:/actions/headset_rotation_changes.txt");
-        if (resetRotFile.is_open()) {
-            resetRotFile << "0 0 0";
-            resetRotFile.close();
+        std::ofstream resetRot("C:/actions/headset_rotation_changes.txt");
+        if (resetRot.is_open()) { resetRot << "0 0 0"; resetRot.close(); }
+        std::istringstream iss(line);
+        double pitchDeg = 0, yawDeg = 0, rollDeg = 0;
+        iss >> pitchDeg >> yawDeg >> rollDeg;
+
+        if (pitchDeg != 0 || yawDeg != 0) {
+            double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
+            double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
+
+            // Yaw around world Y axis
+            double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
+            // Pitch around local X axis
+            double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
+
+            // Apply pitch locally then yaw in world space
+            double tempW, tempX, tempY, tempZ;
+            quatMultiply(orientW, orientX, orientY, orientZ,
+                pw, px, py, pz,
+                tempW, tempX, tempY, tempZ);
+            quatMultiply(yw, yx, yy, yz,
+                tempW, tempX, tempY, tempZ,
+                orientW, orientX, orientY, orientZ);
+
+            // Normalize to prevent floating point drift over time
+            double len = sqrt(orientW * orientW + orientX * orientX + orientY * orientY + orientZ * orientZ);
+            if (len > 0) { orientW /= len; orientX /= len; orientY /= len; orientZ /= len; }
         }
     }
+
     pose.vecPosition[0] = pX;
     pose.vecPosition[1] = pY;
     pose.vecPosition[2] = pZ;
-    t0 = cos(yaw * 0.5);
-    t1 = sin(yaw * 0.5);
-    t2 = cos(roll * 0.5);
-    t3 = sin(roll * 0.5);
-    t4 = cos(pitch * 0.5);
-    t5 = sin(pitch * 0.5);
-
-    pose.qRotation.w = t0 * t2 * t4 + t1 * t3 * t5;
-    pose.qRotation.x = t0 * t3 * t4 - t1 * t2 * t5;
-    pose.qRotation.y = t0 * t2 * t5 + t1 * t3 * t4;
-    pose.qRotation.z = t1 * t2 * t4 - t0 * t3 * t5;
+    pose.qRotation.w = orientW;
+    pose.qRotation.x = orientX;
+    pose.qRotation.y = orientY;
+    pose.qRotation.z = orientZ;
 
     return pose;
 }
