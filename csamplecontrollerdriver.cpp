@@ -3,16 +3,33 @@
 #include <fstream>
 #include <sstream>
 #include <math.h>
+#include <cstdlib>
 #include "driverlog.h"
 #include "vrmath.h"
 
 using namespace vr;
 
-// Controller 1 orientation (Changed to quaternion to prevent gimbal lock and another annoying as bug i found)
+static std::string GetActionsDir()
+{
+    static std::string cached;
+    if (!cached.empty()) {
+        return cached;
+    }
+
+    char* programData = nullptr;
+    size_t programDataLen = 0;
+    _dupenv_s(&programData, &programDataLen, "PROGRAMDATA");
+    std::string base = (programData != nullptr) ? programData : "C:/ProgramData";
+    if (programData != nullptr) {
+        free(programData);
+    }
+    cached = base + "/SkyrimVR Devkit/Actions/";
+    return cached;
+}
+
 static double c1OrientW = 1.0, c1OrientX = 0.0, c1OrientY = 0.0, c1OrientZ = 0.0;
 static double cpX = 0, cpY = 0, cpZ = 0;
 
-// Controller 2 orientation (Changed to quaternion to prevent gimbal lock and another annoying as bug i found)
 static double c2OrientW = 1.0, c2OrientX = 0.0, c2OrientY = 0.0, c2OrientZ = 0.0;
 static double c2pX = 0, c2pY = 0, c2pZ = 0;
 
@@ -172,14 +189,13 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
 
 
     if (ControllerIndex == 1) {
-        std::ifstream posFile("C:/actions/controller1_position_changes.txt");
+        std::ifstream posFile((GetActionsDir() + "controller1_position_changes.txt"));
         if (posFile.is_open()) {
             std::string line;
             std::getline(posFile, line);
             posFile.close();
 
-            // Reset before applying so repeated RunFrame calls don't stack
-            std::ofstream resetPosFile("C:/actions/controller1_position_changes.txt");
+            std::ofstream resetPosFile((GetActionsDir() + "controller1_position_changes.txt"));
             if (resetPosFile.is_open()) {
                 resetPosFile << "0 0 0";
                 resetPosFile.close();
@@ -195,14 +211,13 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
             }
         }
 
-        // Read rotation changes from file
-        std::ifstream rotFile("C:/actions/controller1_rotation_changes.txt");
+        std::ifstream rotFile((GetActionsDir() + "controller1_rotation_changes.txt"));
         if (rotFile.is_open()) {
             std::string line;
             std::getline(rotFile, line);
             rotFile.close();
 
-            std::ofstream resetRotFile("C:/actions/controller1_rotation_changes.txt");
+            std::ofstream resetRotFile((GetActionsDir() + "controller1_rotation_changes.txt"));
             if (resetRotFile.is_open()) {
                 resetRotFile << "0 0 0";
                 resetRotFile.close();
@@ -216,12 +231,9 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
                 double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
                 double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
 
-                // Yaw around world Y axis
                 double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-                // Pitch around local X axis
                 double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
 
-                // Apply pitch locally then yaw in world space
                 double tempW, tempX, tempY, tempZ;
                 quatMultiply(c1OrientW, c1OrientX, c1OrientY, c1OrientZ,
                     pw, px, py, pz,
@@ -246,18 +258,17 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
         pose.vecPosition[2] = cpZ;
     }
     else {
-        std::string posFileName = "C:/actions/controller2_position_changes.txt";
-        std::string rotFileName = "C:/actions/controller2_rotation_changes.txt";
+        std::string posFileName = (GetActionsDir() + "controller2_position_changes.txt");
+        std::string rotFileName = (GetActionsDir() + "controller2_rotation_changes.txt");
 
         // Read position changes from file
-        std::ifstream posFile("C:/actions/controller2_position_changes.txt");
+        std::ifstream posFile((GetActionsDir() + "controller2_position_changes.txt"));
         if (posFile.is_open()) {
             std::string line;
             std::getline(posFile, line);
             posFile.close();
 
-            // Reset before applying so repeated RunFrame calls don't stack
-            std::ofstream resetPosFile("C:/actions/controller2_position_changes.txt");
+            std::ofstream resetPosFile((GetActionsDir() + "controller2_position_changes.txt"));
             if (resetPosFile.is_open()) {
                 resetPosFile << "0 0 0";
                 resetPosFile.close();
@@ -274,13 +285,13 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
         }
 
         // Read rotation changes from file
-        std::ifstream rotFile("C:/actions/controller2_rotation_changes.txt");
+        std::ifstream rotFile((GetActionsDir() + "controller2_rotation_changes.txt"));
         if (rotFile.is_open()) {
             std::string line;
             std::getline(rotFile, line);
             rotFile.close();
 
-            std::ofstream resetRotFile("C:/actions/controller2_rotation_changes.txt");
+            std::ofstream resetRotFile((GetActionsDir() + "controller2_rotation_changes.txt"));
             if (resetRotFile.is_open()) {
                 resetRotFile << "0 0 0";
                 resetRotFile.close();
@@ -294,12 +305,9 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
                 double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
                 double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
 
-                // Yaw around world Y axis
                 double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-                // Pitch around local X axis
                 double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
 
-                // Apply pitch locally then yaw in world space
                 double tempW, tempX, tempY, tempZ;
                 quatMultiply(c2OrientW, c2OrientX, c2OrientY, c2OrientZ,
                     pw, px, py, pz,
@@ -393,12 +401,12 @@ void CSampleControllerDriver::RunFrame()
             trackpadX = 1.0f;
         }
 
-        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], trackpadX, 0);   // Trackpad X
-        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 0.0f, 0);        // Trackpad Y (unused, stays neutral)
+        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], trackpadX, 0);
+        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 0.0f, 0);
 
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], trackpadTouch, 0); // Trackpad Touch
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], trackpadTouch, 0);
 
-        if ((GetAsyncKeyState('4') & 0x8000) != 0) { //Trigger
+        if ((GetAsyncKeyState('4') & 0x8000) != 0) {
             vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 1.0, 0);
         }
         else {

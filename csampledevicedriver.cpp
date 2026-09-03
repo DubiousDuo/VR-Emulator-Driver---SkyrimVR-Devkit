@@ -4,10 +4,29 @@
 #include <fstream>
 #include <sstream>
 #include <math.h>
+#include <cstdlib>
 #include "driverlog.h"
 #include "vrmath.h"
 
 using namespace vr;
+
+static std::string GetActionsDir()
+{
+    static std::string cached;
+    if (!cached.empty()) {
+        return cached;
+    }
+
+    char* programData = nullptr;
+    size_t programDataLen = 0;
+    _dupenv_s(&programData, &programDataLen, "PROGRAMDATA");
+    std::string base = (programData != nullptr) ? programData : "C:/ProgramData";
+    if (programData != nullptr) {
+        free(programData);
+    }
+    cached = base + "/SkyrimVR Devkit/Actions/";
+    return cached;
+}
 
 //Head tracking vars
 static double pX = 0, pY = 0, pZ = 0;
@@ -131,10 +150,10 @@ void CSampleDeviceDriver::EnterStandby()
 {
 }
 
-void *CSampleDeviceDriver::GetComponent(const char *pchComponentNameAndVersion)
+void* CSampleDeviceDriver::GetComponent(const char* pchComponentNameAndVersion)
 {
     if (!_stricmp(pchComponentNameAndVersion, vr::IVRDisplayComponent_Version)) {
-        return (vr::IVRDisplayComponent *)this;
+        return (vr::IVRDisplayComponent*)this;
     }
 
     // override this to add a component to a driver
@@ -145,14 +164,14 @@ void CSampleDeviceDriver::PowerOff()
 {
 }
 
-void CSampleDeviceDriver::DebugRequest(const char *pchRequest, char *pchResponseBuffer, uint32_t unResponseBufferSize)
+void CSampleDeviceDriver::DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize)
 {
     if (unResponseBufferSize >= 1) {
         pchResponseBuffer[0] = 0;
     }
 }
 
-void CSampleDeviceDriver::GetWindowBounds(int32_t *pnX, int32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight)
+void CSampleDeviceDriver::GetWindowBounds(int32_t* pnX, int32_t* pnY, uint32_t* pnWidth, uint32_t* pnHeight)
 {
     *pnX = m_nWindowX;
     *pnY = m_nWindowY;
@@ -170,13 +189,13 @@ bool CSampleDeviceDriver::IsDisplayRealDisplay()
     return false;
 }
 
-void CSampleDeviceDriver::GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnHeight)
+void CSampleDeviceDriver::GetRecommendedRenderTargetSize(uint32_t* pnWidth, uint32_t* pnHeight)
 {
     *pnWidth = m_nRenderWidth;
     *pnHeight = m_nRenderHeight;
 }
 
-void CSampleDeviceDriver::GetEyeOutputViewport(EVREye eEye, uint32_t *pnX, uint32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight)
+void CSampleDeviceDriver::GetEyeOutputViewport(EVREye eEye, uint32_t* pnX, uint32_t* pnY, uint32_t* pnWidth, uint32_t* pnHeight)
 {
     *pnY = 0;
     *pnWidth = m_nWindowWidth / 2;
@@ -184,12 +203,13 @@ void CSampleDeviceDriver::GetEyeOutputViewport(EVREye eEye, uint32_t *pnX, uint3
 
     if (eEye == Eye_Left) {
         *pnX = 0;
-    } else {
+    }
+    else {
         *pnX = m_nWindowWidth / 2;
     }
 }
 
-void CSampleDeviceDriver::GetProjectionRaw(EVREye eEye, float *pfLeft, float *pfRight, float *pfTop, float *pfBottom)
+void CSampleDeviceDriver::GetProjectionRaw(EVREye eEye, float* pfLeft, float* pfRight, float* pfTop, float* pfBottom)
 {
     *pfLeft = -1.0;
     *pfRight = 1.0;
@@ -220,14 +240,13 @@ vr::DriverPose_t CSampleDeviceDriver::GetPose()
     pose.qDriverFromHeadRotation = HmdQuaternion_Init(1, 0, 0, 0);
 
     // Read position changes from file
-    std::ifstream posFile("C:/actions/headset_position_changes.txt");
+    std::ifstream posFile((GetActionsDir() + "headset_position_changes.txt"));
     if (posFile.is_open()) {
         std::string line;
         std::getline(posFile, line);
         posFile.close();
 
-        // Reset before applying so repeated RunFrame calls don't stack
-        std::ofstream resetPosFile("C:/actions/headset_position_changes.txt");
+        std::ofstream resetPosFile((GetActionsDir() + "headset_position_changes.txt"));
         if (resetPosFile.is_open()) {
             resetPosFile << "0 0 0";
             resetPosFile.close();
@@ -244,12 +263,12 @@ vr::DriverPose_t CSampleDeviceDriver::GetPose()
     }
 
     // Read rotation changes from file
-    std::ifstream rotFile("C:/actions/headset_rotation_changes.txt");
+    std::ifstream rotFile((GetActionsDir() + "headset_rotation_changes.txt"));
     if (rotFile.is_open()) {
         std::string line;
         std::getline(rotFile, line);
         rotFile.close();
-        std::ofstream resetRot("C:/actions/headset_rotation_changes.txt");
+        std::ofstream resetRot((GetActionsDir() + "headset_rotation_changes.txt"));
         if (resetRot.is_open()) { resetRot << "0 0 0"; resetRot.close(); }
         std::istringstream iss(line);
         double pitchDeg = 0, yawDeg = 0, rollDeg = 0;
@@ -259,12 +278,9 @@ vr::DriverPose_t CSampleDeviceDriver::GetPose()
             double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
             double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
 
-            // Yaw around world Y axis
             double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-            // Pitch around local X axis
             double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
 
-            // Apply pitch locally then yaw in world space
             double tempW, tempX, tempY, tempZ;
             quatMultiply(orientW, orientX, orientY, orientZ,
                 pw, px, py, pz,
