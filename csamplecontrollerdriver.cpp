@@ -341,16 +341,16 @@ void CSampleControllerDriver::RunFrame()
     if (ControllerIndex == 1) {
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // System
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Application Menu
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F13)) != 0, 0);  // Grip
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Grip
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Left
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Up
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Right
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Down
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F14)) != 0, 0);  // A
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F15)) != 0, 0);  // B
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F16)) != 0, 0);  // X
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F17)) != 0, 0); // Y
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], (0x8000 & GetAsyncKeyState(VK_F18)) != 0, 0); // Trigger Click
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // A
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // B
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // X
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Y
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trigger Click
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[12], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trigger Value
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trackpad Click
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trackpad Touch
@@ -375,23 +375,23 @@ void CSampleControllerDriver::RunFrame()
     }
     else {
         //Controller2
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // System
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F13)) != 0, 0);  // System
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Application Menu
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F20)) != 0, 0);  // Grip
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F14)) != 0, 0);  // Grip
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Left
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Up
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Right
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Down
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // A
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // B
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // X
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Y
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F15)) != 0, 0);  // A
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F16)) != 0, 0);  // B
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F17)) != 0, 0);  // X
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F18)) != 0, 0); // Y
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], (0x8000 & GetAsyncKeyState(VK_F19)) != 0, 0); // Trigger Click
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[12], (0x8000 & GetAsyncKeyState(VK_F20)) != 0, 0); // Trigger Value
 
-        bool turnLeft = (GetAsyncKeyState(VK_F21) & 0x8000) != 0;
-        bool turnRight = (GetAsyncKeyState(VK_F22) & 0x8000) != 0;
-        bool trackpadTouch = (GetAsyncKeyState(VK_F23) & 0x8000) != 0;
+        bool turnLeft = (GetAsyncKeyState(VK_F24) & 0x8000) != 0;
+        bool turnRight = (GetAsyncKeyState(VK_F24) & 0x8000) != 0;
+        bool trackpadTouch = (GetAsyncKeyState(VK_F24) & 0x8000) != 0;
 
         float trackpadX = 0.0f;
         if (turnLeft) {
