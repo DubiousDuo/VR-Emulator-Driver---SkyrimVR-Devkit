@@ -9,8 +9,8 @@ A while ago Valve released an "HMDless" driver for OpenVR called the **null driv
 Using [ar-zadeh's modified null driver](https://github.com/ar-zadeh/VR-Emulator-Driver) and the source files they provided, I was able to make my own version of the driver with a bunch of changes. These include:
 
 - Rewriting how HMD and controller positional/rotational data is read and written to use quaternion-based rotation instead of raw Euler angles, so there's no gimbal lock or other problems with turning.
-- Remapping hardcoded keybinds to F13-F24 so we can have our own "virtual keyboard" since i don't think anyone has a 1980-1990s keyboard with all 24 function keys.
-- Moving the driver's data files out of a `C:\` folder and into `%PROGRAMDATA%`, so it works regardless of what drive Steam happens to be installed on
+- Remapping hardcoded keybinds to F13-F24 so we can have our own "virtual keyboard" since I don't think anyone has a 1980-1990s keyboard with all 24 function keys.
+- Moving the driver's data files out of a `C:\` folder and into `%PROGRAMDATA%` so there isn't just a new random folder in your C drive.
 - A companion AHK-based front end (the "Devkit") that handles all of the setup, toggling, and in-game control so you never have to touch the driver files or SteamVR settings by hand
 
 This repo is just one part of the whole thing, and is mainly here so the AHK program can download the correct driver files. Figured adding some real info here wouldn't hurt though.
