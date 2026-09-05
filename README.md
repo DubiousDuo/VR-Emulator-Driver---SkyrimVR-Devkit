@@ -2,7 +2,7 @@
 
 So uh... never really done GitHub before, or C++... or anything about what I just made, but somehow it all works.
 
-## What this is
+## What This Is
 
 A while ago Valve released an "HMDless" driver for OpenVR called the **null driver**. It's essentially a fully customizable virtual VR headset. Normal functionality of the driver is very limited, really only allowing for launching of VR games and nothing else.
 
@@ -15,7 +15,7 @@ Using [ar-zadeh's modified null driver](https://github.com/ar-zadeh/VR-Emulator-
 
 This repo is just one part of the whole thing, and is mainly here so the AHK program can download the correct driver files. Figured adding some real info here wouldn't hurt though.
 
-## The basics
+## The Basics
 
 WASD, Space, Control, Shift, Alt and other miscellaneous keys still work natively in SkyrimVR, so movement, jumping, crouching, TAB, journal etc, all work exactly like they normally would. What you *can't* normally do is look around or move your controllers. No headset or controllers means no head or hand tracking, so the camera and controllers just sit there.
 
@@ -25,7 +25,7 @@ The modified null driver fixes that by injecting rotational data directly into t
 - Movement (WASD) and looking (arrows) are fully independent, so you can walk and look around at the same time like a normal game
 - Inventory, Opening the map, Journal, Settings, nearly every single vanilla keybind works, though they might be in odd spots. For example both Left Control and Left shift are crouch for some reason.
 
-## What the Devkit/AHK program actually does
+## What The Devkit/AHK Program Actually Does
 
 On top of the driver itself, the front-end tool handles:
 
@@ -40,7 +40,7 @@ It's basically how you communicate with the driver without a headset or controll
 
 There's only one real limitation right now. Because of how SkyrimVR's console actually processes input, sending a command still needs the in-game console to be open for a moment while it happens — but it's fast enough that it's not really disruptive.
 
-## Building it yourself
+## Building It Yourself
 
 Built in **Visual Studio Community 2022** against **[OpenVR 1.26.7](https://github.com/ValveSoftware/openvr/releases#release-v1.26.7)**, load up the project file and add the OpenVR headers file as a directory.
 
