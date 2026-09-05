@@ -1,6 +1,5 @@
 # SkyrimVR Modders Devkit Documentation
 
-So uh... never really done GitHub before, or C++... or anything about what I just made, but somehow it all works.
 
 ## What This Is
 
