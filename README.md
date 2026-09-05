@@ -28,16 +28,16 @@ The modified null driver fixes that by injecting rotational data directly into t
 
 On top of the driver itself, the front-end tool handles:
 
-- **One-click driver toggle** — flips the null driver on/off in your `steamvr.vrsettings`
-- **Auto-downloads and installs the driver** straight from this repo (when you click the button)
-- **Movement Mode** — a dedicated toggle that intercepts arrow keys for looking, remaps `Q`/`E` to Skyrim's native menu-navigation numpad layout, and remaps Left Shift to Left Alt. Why does it do those things? First off, the only way to navigate specific between tabs in some menus is with Numpad8 and Numpad5, specifically the settings menu. It intercepts Left Shift and sends Left Alt because of what i said earlier. Left Shift is crouch, found out that Left Alt is sprint so i remapped that. Also we intercept E at all times while movement mode is enabled because the game will just crash if you press E.
-- **Quick console commands** — a few customizable one click buttons for common testing commands (god mode, noclip, speed changes, teleporting, a janky ass infinite candlelight toggle), plus a  console command box with history, for when you need something the buttons don't cover because trying to type in the console is a pain in the ass for VR, even with this driver.
-- **Adjustable turn sensitivity**, live, via a slider
-- **A consent screen** on first run, since the tool does download files, read/write settings, and briefly touch your clipboard when sending console commands — all clearly disclosed up front, and only with a Yes/No you control every time
+- **One-click driver toggle:** Flips the null driver on/off in your `steamvr.vrsettings`
+- **Auto-downloads and installs the driver:** When you click the Download/Update button it will download the correct files from this repo and install them.
+- **Movement Mode:** A dedicated toggle that intercepts arrow keys for looking, remaps `Q`/`E` to Skyrim's native menu-navigation numpad layout, and remaps Left Shift to Left Alt. Why does it do those things? First off, the only way to navigate specific between tabs in some menus is with Numpad8 and Numpad5, specifically the settings menu. It intercepts Left Shift and sends Left Alt because of what i said earlier. Left Shift is crouch, found out that Left Alt is sprint so i remapped that. Also we intercept E at all times while movement mode is enabled because the game will just crash if you press E.
+- **Quick console commands:** A few customizable one click buttons for common testing commands (god mode, noclip, speed changes, teleporting, a janky ass infinite candlelight toggle), plus a console command box with history, for when you need something the buttons don't cover because trying to type in the console is a pain in the ass for VR, even with this driver.
+- **Adjustable turn sensitivity:** Adds a slider to adjust your look sensitivity on the fly
+- **A consent screen:** On first run, since the tool does download files, read/write settings, and briefly touch your clipboard when sending console commands i figured adding a consent screen would be nice. Everything is all clearly disclosed up front.
 
 It's basically how you communicate with the driver without a headset or controllers.
 
-There's only one real limitation right now. Because of how SkyrimVR's console actually processes input, sending a command still needs the in-game console to be open for a moment while it happens — but it's fast enough that it's not really disruptive.
+There's only one real limitation right now. Because of how SkyrimVR's console actually processes input, sending a command still needs the in-game console to be open for a moment while it happens, but it's fast enough that it's too disruptive. The Devkit also entirely locks down the keyboard while the console is open to prevent any issues.
 
 ## Building It Yourself
 
