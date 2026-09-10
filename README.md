@@ -50,4 +50,5 @@ Built in **Visual Studio Community 2022** against **[OpenVR 1.26.7](https://gith
 ---
 
 Note: This release includes a portable, renamed copy of the AutoHotkey interpreter engine, which is distributed under the GNU General Public License v2.
+
 The original, unmodified source code for the AutoHotKey engine can be found at "https://github.com/autohotkey/autohotkey"
