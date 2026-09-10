@@ -23,6 +23,7 @@ The modified null driver fixes that by injecting rotational data directly into t
 - **Arrow keys look up, down, left, and right**
 - Movement (WASD) and looking (arrows) are fully independent, so you can walk and look around at the same time like a normal game
 - Inventory, Opening the map, Journal, Settings, nearly every single vanilla keybind works, though they might be in odd spots. For example both Left Control and Left shift are crouch for some reason.
+- If you need to get a closer look at something, you can use Left Alt along with WASD+QE to move the HMD directly. It's not recommended to use this often though, you should really only use it a bit before closing     SkyrimVR along with SteamVR and reopening both.
 
 ## What The Devkit/AHK Program Actually Does
 
