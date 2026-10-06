@@ -1,4 +1,5 @@
 #include "cserverdriver_sample.h"
+#include "devkit_input.h"
 
 using namespace vr;
 
@@ -24,6 +25,7 @@ EVRInitError CServerDriver_Sample::Init(vr::IVRDriverContext *pDriverContext)
 void CServerDriver_Sample::Cleanup()
 {
     //CleanupDriverLog();
+    DevkitInput::Shutdown(); // frees the mouse (if mouse look had it) and stops the Raw Input thread
     delete m_pNullHmdLatest;
     m_pNullHmdLatest = NULL;
     delete m_pController;
