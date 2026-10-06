@@ -2,46 +2,14 @@
 
 #include "basics.h"
 #include <fstream>
-#include <sstream>
 #include <math.h>
 #include <cstdlib>
+#include <string>
 #include "driverlog.h"
 #include "vrmath.h"
+#include "devkit_input.h"
 
 using namespace vr;
-
-static std::string GetActionsDir()
-{
-    static std::string cached;
-    if (!cached.empty()) {
-        return cached;
-    }
-
-    char* programData = nullptr;
-    size_t programDataLen = 0;
-    _dupenv_s(&programData, &programDataLen, "PROGRAMDATA");
-    std::string base = (programData != nullptr) ? programData : "C:/ProgramData";
-    if (programData != nullptr) {
-        free(programData);
-    }
-    cached = base + "/SkyrimVR Devkit/Actions/";
-    return cached;
-}
-
-//Head tracking vars
-static double pX = 0, pY = 0, pZ = 0;
-static double orientW = 1.0, orientX = 0.0, orientY = 0.0, orientZ = 0.0;
-
-static void quatMultiply(
-    double aw, double ax, double ay, double az,
-    double bw, double bx, double by, double bz,
-    double& rw, double& rx, double& ry, double& rz)
-{
-    rw = aw * bw - ax * bx - ay * by - az * bz;
-    rx = aw * bx + ax * bw + ay * bz - az * by;
-    ry = aw * by - ax * bz + ay * bw + az * bx;
-    rz = aw * bz + ax * by - ay * bx + az * bw;
-}
 
 CSampleDeviceDriver::CSampleDeviceDriver()
 {
@@ -66,6 +34,19 @@ CSampleDeviceDriver::CSampleDeviceDriver()
     m_nRenderHeight = vr::VRSettings()->GetInt32(k_pch_Sample_Section, k_pch_Sample_RenderHeight_Int32);
     m_flSecondsFromVsyncToPhotons = vr::VRSettings()->GetFloat(k_pch_Sample_Section, k_pch_Sample_SecondsFromVsyncToPhotons_Float);
     m_flDisplayFrequency = vr::VRSettings()->GetFloat(k_pch_Sample_Section, k_pch_Sample_DisplayFrequency_Float);
+
+    // "Console view": where the frontend's Position Camera button (ghost key F21) puts the headset so
+    // the console is readable.
+    {
+        vr::EVRSettingsError err = vr::VRSettingsError_None;
+        float viewX = vr::VRSettings()->GetFloat(k_pch_Sample_Section, "consoleViewX", &err);
+        if (err != vr::VRSettingsError_None) viewX = -0.4f;
+        float viewY = vr::VRSettings()->GetFloat(k_pch_Sample_Section, "consoleViewY", &err);
+        if (err != vr::VRSettingsError_None) viewY = -0.3f;
+        float viewZ = vr::VRSettings()->GetFloat(k_pch_Sample_Section, "consoleViewZ", &err);
+        if (err != vr::VRSettingsError_None) viewZ = 0.0f;
+        DevkitInput::SetConsoleView(viewX, viewY, viewZ);
+    }
 
     /*DriverLog( "driver_null: Serial Number: %s\n", m_sSerialNumber.c_str() );
         DriverLog( "driver_null: Model Number: %s\n", m_sModelNumber.c_str() );
@@ -232,76 +213,21 @@ DistortionCoordinates_t CSampleDeviceDriver::ComputeDistortion(EVREye eEye, floa
 
 vr::DriverPose_t CSampleDeviceDriver::GetPose()
 {
-    static vr::DriverPose_t pose = { 0 };
+    vr::DriverPose_t pose = { 0 };
     pose.poseIsValid = true;
     pose.result = vr::TrackingResult_Running_OK;
     pose.deviceIsConnected = true;
     pose.qWorldFromDriverRotation = HmdQuaternion_Init(1, 0, 0, 0);
     pose.qDriverFromHeadRotation = HmdQuaternion_Init(1, 0, 0, 0);
 
-    // Read position changes from file
-    std::ifstream posFile((GetActionsDir() + "headset_position_changes.txt"));
-    if (posFile.is_open()) {
-        std::string line;
-        std::getline(posFile, line);
-        posFile.close();
-
-        std::ofstream resetPosFile((GetActionsDir() + "headset_position_changes.txt"));
-        if (resetPosFile.is_open()) {
-            resetPosFile << "0 0 0";
-            resetPosFile.close();
-        }
-
-        std::istringstream iss(line);
-        double posChanges[3] = { 0 };
-        iss >> posChanges[0] >> posChanges[1] >> posChanges[2];
-        if (posChanges[0] != 0 || posChanges[1] != 0 || posChanges[2] != 0) {
-            pX += posChanges[0];
-            pY += posChanges[1];
-            pZ += posChanges[2];
-        }
-    }
-
-    // Read rotation changes from file
-    std::ifstream rotFile((GetActionsDir() + "headset_rotation_changes.txt"));
-    if (rotFile.is_open()) {
-        std::string line;
-        std::getline(rotFile, line);
-        rotFile.close();
-        std::ofstream resetRot((GetActionsDir() + "headset_rotation_changes.txt"));
-        if (resetRot.is_open()) { resetRot << "0 0 0"; resetRot.close(); }
-        std::istringstream iss(line);
-        double pitchDeg = 0, yawDeg = 0, rollDeg = 0;
-        iss >> pitchDeg >> yawDeg >> rollDeg;
-
-        if (pitchDeg != 0 || yawDeg != 0) {
-            double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
-            double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
-
-            double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-            double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
-
-            double tempW, tempX, tempY, tempZ;
-            quatMultiply(orientW, orientX, orientY, orientZ,
-                pw, px, py, pz,
-                tempW, tempX, tempY, tempZ);
-            quatMultiply(yw, yx, yy, yz,
-                tempW, tempX, tempY, tempZ,
-                orientW, orientX, orientY, orientZ);
-
-            // Normalize to prevent floating point drift over time
-            double len = sqrt(orientW * orientW + orientX * orientX + orientY * orientY + orientZ * orientZ);
-            if (len > 0) { orientW /= len; orientX /= len; orientY /= len; orientZ /= len; }
-        }
-    }
-
-    pose.vecPosition[0] = pX;
-    pose.vecPosition[1] = pY;
-    pose.vecPosition[2] = pZ;
-    pose.qRotation.w = orientW;
-    pose.qRotation.x = orientX;
-    pose.qRotation.y = orientY;
-    pose.qRotation.z = orientZ;
+    const DevkitInput::Pose p = DevkitInput::Snapshot();
+    pose.vecPosition[0] = p.px;
+    pose.vecPosition[1] = p.py;
+    pose.vecPosition[2] = p.pz;
+    pose.qRotation.w = p.ow;
+    pose.qRotation.x = p.ox;
+    pose.qRotation.y = p.oy;
+    pose.qRotation.z = p.oz;
 
     return pose;
 }
@@ -310,7 +236,9 @@ void CSampleDeviceDriver::RunFrame()
 {
     // In a real driver, this should happen from some pose tracking thread.
     // The RunFrame interval is unspecified and can be very irregular if some other
-    // driver blocks it for some periodic task.
+    // driver blocks it for some periodic task - which is why turning is integrated against real
+    // elapsed time in DevkitInput rather than assuming a fixed frame rate.
+    DevkitInput::Update();
     if (m_unObjectId != vr::k_unTrackedDeviceIndexInvalid) {
         vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_unObjectId, GetPose(), sizeof(DriverPose_t));
     }

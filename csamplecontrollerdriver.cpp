@@ -1,48 +1,14 @@
 #include "csamplecontrollerdriver.h"
 #include "basics.h"
 #include <fstream>
-#include <sstream>
 #include <math.h>
 #include <cstdlib>
+#include <string>
 #include "driverlog.h"
 #include "vrmath.h"
+#include "devkit_input.h"
 
 using namespace vr;
-
-static std::string GetActionsDir()
-{
-    static std::string cached;
-    if (!cached.empty()) {
-        return cached;
-    }
-
-    char* programData = nullptr;
-    size_t programDataLen = 0;
-    _dupenv_s(&programData, &programDataLen, "PROGRAMDATA");
-    std::string base = (programData != nullptr) ? programData : "C:/ProgramData";
-    if (programData != nullptr) {
-        free(programData);
-    }
-    cached = base + "/SkyrimVR Devkit/Actions/";
-    return cached;
-}
-
-static double c1OrientW = 1.0, c1OrientX = 0.0, c1OrientY = 0.0, c1OrientZ = 0.0;
-static double cpX = 0, cpY = 0, cpZ = 0;
-
-static double c2OrientW = 1.0, c2OrientX = 0.0, c2OrientY = 0.0, c2OrientZ = 0.0;
-static double c2pX = 0, c2pY = 0, c2pZ = 0;
-
-static void quatMultiply(
-    double aw, double ax, double ay, double az,
-    double bw, double bx, double by, double bz,
-    double& rw, double& rx, double& ry, double& rz)
-{
-    rw = aw * bw - ax * bx - ay * by - az * bz;
-    rx = aw * bx + ax * bw + ay * bz - az * by;
-    ry = aw * by - ax * bz + ay * bw + az * bx;
-    rz = aw * bz + ax * by - ay * bx + az * bw;
-}
 
 CSampleControllerDriver::CSampleControllerDriver()
 {
@@ -107,6 +73,8 @@ vr::EVRInitError CSampleControllerDriver::Activate(vr::TrackedDeviceIndex_t unOb
 
     // this file tells the UI what to show the user for binding this controller as well as what default bindings should
     // be for legacy or other apps
+
+    // Entirely pointless for this project as SkyrimVR understands OpenVR/SteamVR. Hence why the .json file is missing from the .zip file
     vr::VRProperties()->SetStringProperty(m_ulPropertyContainer, Prop_InputProfilePath_String, "{null}/input/mycontroller_profile.json");
 
     //  Buttons handles
@@ -125,8 +93,6 @@ vr::EVRInitError CSampleControllerDriver::Activate(vr::TrackedDeviceIndex_t unOb
     vr::VRDriverInput()->CreateBooleanComponent(m_ulPropertyContainer, "/input/trigger/value", &HButtons[12]);
     vr::VRDriverInput()->CreateBooleanComponent(m_ulPropertyContainer, "/input/trackpad/click", &HButtons[13]);
     vr::VRDriverInput()->CreateBooleanComponent(m_ulPropertyContainer, "/input/trackpad/touch", &HButtons[14]);
-
-    // Analog handles
 
     // Analog handles
     vr::VRDriverInput()->CreateScalarComponent(
@@ -186,151 +152,17 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
     pose.qWorldFromDriverRotation = HmdQuaternion_Init(1, 0, 0, 0);
     pose.qDriverFromHeadRotation = HmdQuaternion_Init(1, 0, 0, 0);
 
-
-
-    if (ControllerIndex == 1) {
-        std::ifstream posFile((GetActionsDir() + "controller1_position_changes.txt"));
-        if (posFile.is_open()) {
-            std::string line;
-            std::getline(posFile, line);
-            posFile.close();
-
-            std::ofstream resetPosFile((GetActionsDir() + "controller1_position_changes.txt"));
-            if (resetPosFile.is_open()) {
-                resetPosFile << "0 0 0";
-                resetPosFile.close();
-            }
-
-            std::istringstream iss(line);
-            double posChanges[3] = { 0 };
-            iss >> posChanges[0] >> posChanges[1] >> posChanges[2];
-            if (posChanges[0] != 0 || posChanges[1] != 0 || posChanges[2] != 0) {
-                cpX += posChanges[0];
-                cpY += posChanges[1];
-                cpZ += posChanges[2];
-            }
-        }
-
-        std::ifstream rotFile((GetActionsDir() + "controller1_rotation_changes.txt"));
-        if (rotFile.is_open()) {
-            std::string line;
-            std::getline(rotFile, line);
-            rotFile.close();
-
-            std::ofstream resetRotFile((GetActionsDir() + "controller1_rotation_changes.txt"));
-            if (resetRotFile.is_open()) {
-                resetRotFile << "0 0 0";
-                resetRotFile.close();
-            }
-
-            std::istringstream iss(line);
-            double pitchDeg = 0, yawDeg = 0, rollDeg = 0;
-            iss >> pitchDeg >> yawDeg >> rollDeg;
-
-            if (pitchDeg != 0 || yawDeg != 0) {
-                double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
-                double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
-
-                double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-                double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
-
-                double tempW, tempX, tempY, tempZ;
-                quatMultiply(c1OrientW, c1OrientX, c1OrientY, c1OrientZ,
-                    pw, px, py, pz,
-                    tempW, tempX, tempY, tempZ);
-                quatMultiply(yw, yx, yy, yz,
-                    tempW, tempX, tempY, tempZ,
-                    c1OrientW, c1OrientX, c1OrientY, c1OrientZ);
-
-                // Normalize to prevent floating point drift over time
-                double len = sqrt(c1OrientW * c1OrientW + c1OrientX * c1OrientX + c1OrientY * c1OrientY + c1OrientZ * c1OrientZ);
-                if (len > 0) { c1OrientW /= len; c1OrientX /= len; c1OrientY /= len; c1OrientZ /= len; }
-            }
-        }
-
-        pose.qRotation.w = c1OrientW;
-        pose.qRotation.x = c1OrientX;
-        pose.qRotation.y = c1OrientY;
-        pose.qRotation.z = c1OrientZ;
-
-        pose.vecPosition[0] = cpX;
-        pose.vecPosition[1] = cpY;
-        pose.vecPosition[2] = cpZ;
-    }
-    else {
-        std::string posFileName = (GetActionsDir() + "controller2_position_changes.txt");
-        std::string rotFileName = (GetActionsDir() + "controller2_rotation_changes.txt");
-
-        // Read position changes from file
-        std::ifstream posFile((GetActionsDir() + "controller2_position_changes.txt"));
-        if (posFile.is_open()) {
-            std::string line;
-            std::getline(posFile, line);
-            posFile.close();
-
-            std::ofstream resetPosFile((GetActionsDir() + "controller2_position_changes.txt"));
-            if (resetPosFile.is_open()) {
-                resetPosFile << "0 0 0";
-                resetPosFile.close();
-            }
-
-            std::istringstream iss(line);
-            double posChanges[3] = { 0 };
-            iss >> posChanges[0] >> posChanges[1] >> posChanges[2];
-            if (posChanges[0] != 0 || posChanges[1] != 0 || posChanges[2] != 0) {
-                c2pX += posChanges[0];
-                c2pY += posChanges[1];
-                c2pZ += posChanges[2];
-            }
-        }
-
-        // Read rotation changes from file
-        std::ifstream rotFile((GetActionsDir() + "controller2_rotation_changes.txt"));
-        if (rotFile.is_open()) {
-            std::string line;
-            std::getline(rotFile, line);
-            rotFile.close();
-
-            std::ofstream resetRotFile((GetActionsDir() + "controller2_rotation_changes.txt"));
-            if (resetRotFile.is_open()) {
-                resetRotFile << "0 0 0";
-                resetRotFile.close();
-            }
-
-            std::istringstream iss(line);
-            double pitchDeg = 0, yawDeg = 0, rollDeg = 0;
-            iss >> pitchDeg >> yawDeg >> rollDeg;
-
-            if (pitchDeg != 0 || yawDeg != 0) {
-                double halfPitch = DEG_TO_RAD(pitchDeg) * 0.5;
-                double halfYaw = DEG_TO_RAD(yawDeg) * 0.5;
-
-                double yw = cos(halfYaw), yx = 0.0, yy = sin(halfYaw), yz = 0.0;
-                double pw = cos(halfPitch), px = sin(halfPitch), py = 0.0, pz = 0.0;
-
-                double tempW, tempX, tempY, tempZ;
-                quatMultiply(c2OrientW, c2OrientX, c2OrientY, c2OrientZ,
-                    pw, px, py, pz,
-                    tempW, tempX, tempY, tempZ);
-                quatMultiply(yw, yx, yy, yz,
-                    tempW, tempX, tempY, tempZ,
-                    c2OrientW, c2OrientX, c2OrientY, c2OrientZ);
-
-                // Normalize to prevent floating point drift over time
-                double len = sqrt(c2OrientW * c2OrientW + c2OrientX * c2OrientX + c2OrientY * c2OrientY + c2OrientZ * c2OrientZ);
-                if (len > 0) { c2OrientW /= len; c2OrientX /= len; c2OrientY /= len; c2OrientZ /= len; }
-            }
-        }
-
-        pose.qRotation.w = c2OrientW;
-        pose.qRotation.x = c2OrientX;
-        pose.qRotation.y = c2OrientY;
-        pose.qRotation.z = c2OrientZ;
-
-        pose.vecPosition[0] = c2pX;
-        pose.vecPosition[1] = c2pY;
-        pose.vecPosition[2] = c2pZ;
-    }
+    // The pose is computed once per frame in DevkitInput::Update() and shared by the headset and both
+    // controllers (everything turns and moves together, as it did when the frontend wrote the same
+    // line to every device file). This is just a read.
+    const DevkitInput::Pose p = DevkitInput::Snapshot();
+    pose.qRotation.w = p.ow;
+    pose.qRotation.x = p.ox;
+    pose.qRotation.y = p.oy;
+    pose.qRotation.z = p.oz;
+    pose.vecPosition[0] = p.px;
+    pose.vecPosition[1] = p.py;
+    pose.vecPosition[2] = p.pz;
 
     return pose;
 }
@@ -338,74 +170,52 @@ vr::DriverPose_t CSampleControllerDriver::GetPose()
 void CSampleControllerDriver::RunFrame()
 {
 
+    DevkitInput::Update();
+
     if (ControllerIndex == 1) {
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // System
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Application Menu
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Grip
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Left
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Up
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Right
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Down
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // A
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // B
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // X
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Y
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trigger Click
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[12], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trigger Value
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trackpad Click
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Trackpad Touch
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], false, 0);  // System
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], false, 0);  // Application Menu
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], false, 0);  // Grip
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], false, 0);  // D-pad Left
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], false, 0);  // D-pad Up
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], false, 0);  // D-pad Right
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], false, 0);  // D-pad Down
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], false, 0);  // A
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], false, 0);  // B
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], false, 0);  // X
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], false, 0); // Y
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], false, 0); // Trigger Click
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[12], false, 0); // Trigger Value
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], false, 0); // Trackpad Click
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], false, 0); // Trackpad Touch
 
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], 0.0, 0); //Trackpad x
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 0.0, 0); //Trackpad y
 
-        if ((GetAsyncKeyState('2') & 0x8000) != 0) {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], 1.0, 0);
-        }
-
-        if ((GetAsyncKeyState('3') & 0x8000) != 0) {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 1.0, 0);
-        }
-
-        if ((GetAsyncKeyState('X') & 0x8000) != 0) { //Trigger
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 1.0, 0);
-        }
-        else {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 0.0, 0);
-        }
+        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 0.0, 0); //Trigger
     }
     else {
         //Controller2
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F13)) != 0, 0);  // System
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Application Menu
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // Grip
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Left
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Up
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Right
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // D-pad Down
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // A
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // B
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0);  // X
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], (0x8000 & GetAsyncKeyState(VK_F24)) != 0, 0); // Y
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], (0x8000 & GetAsyncKeyState(VK_F14)) != 0, 0); // Trackpad Click
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], (0x8000 & GetAsyncKeyState(VK_F15)) != 0, 0); // Trackpad Touch
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], false, 0);  // Application Menu
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], false, 0);  // Grip
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[3], false, 0);  // D-pad Left
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], false, 0);  // D-pad Up
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], false, 0);  // D-pad Right
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], false, 0);  // D-pad Down
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], false, 0);  // A
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], false, 0);  // B
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], false, 0);  // X
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], false, 0); // Y
+        bool interactTouch = false, interactClick = false;
+        DevkitInput::GetTrackpad(interactTouch, interactClick);
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], interactClick || (0x8000 & GetAsyncKeyState(VK_F14)) != 0, 0); // Trackpad Click
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[14], interactTouch || (0x8000 & GetAsyncKeyState(VK_F15)) != 0, 0); // Trackpad Touch
 
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], 0.0, 0); //Trackpad x
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 0.0, 0); //Trackpad y
 
-        if ((GetAsyncKeyState('2') & 0x8000) != 0) {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], 1.0, 0);
-        }
-
-        if ((GetAsyncKeyState('3') & 0x8000) != 0) {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 1.0, 0);
-        }
-
-        if ((GetAsyncKeyState('X') & 0x8000) != 0) { //Trigger
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 1.0, 0);
-        }
-        else {
-            vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 0.0, 0);
-        }
+        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 0.0, 0); //Trigger
     }
 
     if (m_unObjectId != vr::k_unTrackedDeviceIndexInvalid) {
@@ -435,6 +245,7 @@ std::string CSampleControllerDriver::GetSerialNumber() const
         return "CTRL2Serial";
         break;
     }
+    return ""; // any other controller index (never used) - avoids falling off the end of the function
 }
 
 
