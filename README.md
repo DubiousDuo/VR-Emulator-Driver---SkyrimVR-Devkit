@@ -62,6 +62,8 @@ Built in **Visual Studio Community 2022** against **[OpenVR 1.26.7](https://gith
 
 ---
 
+**SkyrimVR Devkit is an unofficial, fan-made modding tool. It is not affiliated with, endorsed by, or associated with Bethesda Softworks or ZeniMax Media.**
+
 Note: Older releases includes a portable, renamed copy of the AutoHotkey interpreter engine, which is distributed under the GNU General Public License v2. 
 
 The exact matching source code for this engine version (v2.0.27) is included as a zip archive directly inside our older compiled release packages, but can also be found at "https://github.com/AutoHotkey/AutoHotkey/releases/tag/v2.0.27"
