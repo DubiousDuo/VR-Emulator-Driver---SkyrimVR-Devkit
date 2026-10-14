@@ -5,9 +5,12 @@
 #include <windows.h>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <locale>
 #include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -29,6 +32,7 @@ constexpr double kDefaultTurnSpeed   = 216.0; // degrees per second
 constexpr double kMaxFrameDt         = 0.1;   // a hitch longer than this doesn't cause a turn jump
 constexpr double kMaxPitch           = 89.0;  // look up/down stops here, like a neck
 constexpr double kDefaultMouseSens   = 0.05;  // degrees per mouse count (the frontend sends this times its slider)
+constexpr const char* kDriverBuild   = "2.0.1"; // reported in driver_status.txt
 constexpr double kMaxMouseStep       = 90.0;  // most the mouse can turn in one frame, so a burst can't spin the view
 
 struct Pose {
@@ -79,6 +83,15 @@ struct Shared {
     bool   mouseGrab = false;
     double viewX = -0.4, viewY = -0.3, viewZ = 0;
     bool   viewRotate = true;
+
+    // Reported in driver_status.txt (so a bug report can show what the driver actually sees)
+    long long frames = 0;          // frames the driver has processed
+    bool      alive = false;       // heartbeat alive at the last frame
+    long      hbChanges = 0;       // how many times the heartbeat key has flipped
+    unsigned  seenMask = 0;        // bit per ghost key (look up/down/left/right, interact, reposition, reset, heartbeat) ever seen down
+    unsigned  heldMask = 0;        // same bits, held right now
+    bool      cfgFound = false;    // controls.txt was found and read
+    double    lastStatusWrite = -10;
 };
 
 inline Shared& S()
@@ -165,6 +178,7 @@ inline void Step(Shared& s, const Keys& k, double t)
     if (dt > kMaxFrameDt) dt = kMaxFrameDt;
     s.lastUpdate = t;
     s.initialized = true;
+    s.frames++;
 
     // Heartbeat: "alive" while the key's state has changed within the timeout. The very first
     // observation only records the state and counts as DEAD: if the driver starts while a previous
@@ -178,8 +192,13 @@ inline void Step(Shared& s, const Keys& k, double t)
     else if (k.heartbeat != s.hbState) {
         s.hbState = k.heartbeat;
         s.hbChange = t;
+        s.hbChanges++;
     }
     const bool alive = (t - s.hbChange) < kHeartbeatTimeout;
+    s.alive = alive;
+    s.heldMask = (k.lookUp ? 1u : 0u) | (k.lookDown ? 2u : 0u) | (k.lookLeft ? 4u : 0u) | (k.lookRight ? 8u : 0u)
+               | (k.interact ? 16u : 0u) | (k.reposition ? 32u : 0u) | (k.reset ? 64u : 0u) | (k.heartbeat ? 128u : 0u);
+    s.seenMask |= s.heldMask;
 
     if (k.reposition && !s.prevReposition) {
         double x = s.viewX, z = s.viewZ;
@@ -267,8 +286,10 @@ inline void RefreshConfig(Shared& s, double t)
 
     std::ifstream f(ActionsDir() + "controls.txt");
     if (!f.is_open()) {
+        s.cfgFound = false;
         return;
     }
+    s.cfgFound = true;
     std::string key;
     double value = 0;
     while (f >> key >> value) {
@@ -315,6 +336,8 @@ inline void RefreshViewFile(Shared& s)
 struct MouseIn {
     std::atomic<long> dx{0}, dy{0};
     std::atomic<int>  toggles{0};
+    std::atomic<long long> rawEvents{0};   // mouse events the Raw Input thread has received (for driver_status.txt)
+    std::atomic<long long> rightClicks{0};
     std::atomic<bool> started{false};
     std::atomic<bool> finished{false};
     std::atomic<HWND> hwnd{nullptr};
@@ -340,12 +363,14 @@ inline LRESULT CALLBACK MouseSinkProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 const RAWINPUT* ri = reinterpret_cast<const RAWINPUT*>(buf);
                 if (ri->header.dwType == RIM_TYPEMOUSE) {
                     const RAWMOUSE& rm = ri->data.mouse;
+                    M().rawEvents++;
                     if (!(rm.usFlags & MOUSE_MOVE_ABSOLUTE)) {
                         M().dx += rm.lLastX;
                         M().dy += rm.lLastY;
                     }
                     if (rm.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN) {
                         M().toggles++;
+                        M().rightClicks++;
                     }
                 }
             }
@@ -504,9 +529,74 @@ inline void ApplyMouseGrab(Shared& s, HWND gameWnd)
     }
 }
 
+// ---- driver_status.txt ---------------------------------------------------------------------------------
+// Once a second the driver writes what it currently sees to <Actions>/driver_status.txt. The frontend's Copy
+// Diagnostics (and its "Live" line) read it, so a "look around doesn't work" report can say whether the driver
+// is receiving the heartbeat and keys at all, and whether mouse input is arriving.
+inline std::string KeyNames(unsigned mask)
+{
+    static const char* names[8] = { "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23" };
+    std::string out;
+    for (int i = 0; i < 8; ++i) {
+        if (mask & (1u << i)) {
+            out += (out.empty() ? "" : ",");
+            out += names[i];
+        }
+    }
+    return out.empty() ? "none" : out;
+}
+
+inline std::string BuildStatus(const Shared& s, double t, bool gameFocused)
+{
+    MouseIn& m = M();
+    char num[64];
+    std::ostringstream o;
+    o.imbue(std::locale::classic());
+    o << "driver_build " << kDriverBuild << "\n";
+    o << "frames " << s.frames << "\n";
+    o << "heartbeat_alive " << (s.alive ? 1 : 0) << "\n";
+    o << "heartbeat_changes " << s.hbChanges << "\n";
+    std::snprintf(num, sizeof(num), "%.1f", s.hbChanges > 0 ? (t - s.hbChange) : -1.0);
+    o << "heartbeat_last_change_age " << num << "\n";
+    o << "keys_ever_seen " << KeyNames(s.seenMask) << "\n";
+    o << "keys_held_now " << KeyNames(s.heldMask) << "\n";
+    o << "game_focused " << (gameFocused ? 1 : 0) << "\n";
+    o << "controls_file_found " << (s.cfgFound ? 1 : 0) << "\n";
+    o << "mouse_enabled " << (s.mouseEnabled ? 1 : 0) << "\n";
+    o << "mouse_thread_running " << (m.hwnd.load() ? 1 : 0) << "\n";
+    o << "mouse_raw_events " << m.rawEvents.load() << "\n";
+    o << "mouse_right_clicks " << m.rightClicks.load() << "\n";
+    o << "mouse_look " << (s.mouseLook ? 1 : 0) << "\n";
+    std::snprintf(num, sizeof(num), "%.1f", s.yawDeg);
+    o << "yaw_deg " << num << "\n";
+    std::snprintf(num, sizeof(num), "%.1f", s.pitchDeg);
+    o << "pitch_deg " << num << "\n";
+    std::snprintf(num, sizeof(num), "%.1f", s.turnSpeed);
+    o << "turn_speed " << num << "\n";
+    return o.str();
+}
+
+// Written to a temp file and swapped in, so the frontend never reads half of it. Quietly does nothing if the
+// Actions folder doesn't exist yet (the frontend creates it).
+inline void WriteStatusFile(const std::string& text)
+{
+    const std::string path = ActionsDir() + "driver_status.txt";
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!f.is_open()) {
+            return;
+        }
+        f << text;
+    }
+    MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
+}
+
 inline void Update()
 {
     Shared& s = S();
+    std::string status;
+    {
     std::lock_guard<std::mutex> lock(s.m);
 
     const double t = NowSeconds();
@@ -544,6 +634,14 @@ inline void Update()
     }
     Step(s, k, t);
     ApplyMouseGrab(s, gameWnd);
+    if (t - s.lastStatusWrite >= 1.0) {
+        s.lastStatusWrite = t;
+        status = BuildStatus(s, t, k.gameFocused);
+    }
+    }
+    if (!status.empty()) {
+        WriteStatusFile(status); // outside the lock: file I/O shouldn't hold up the poses
+    }
 }
 
 // Called when the driver unloads: frees the cursor and stops the mouse thread.

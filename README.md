@@ -34,12 +34,13 @@ On top of the driver itself, the front-end tool handles:
 
 - **Setup Checklist:** Opens by itself the first time and walks you through everything, turning each step green once it's done.
 - **One-click driver toggle:** A single checkbox flips the null driver on/off in your `steamvr.vrsettings`
-- **Auto-downloads and installs the driver:** When you click the Download/Update button it will download the correct files from this repo and install them into SteamVR's own folder (even if SteamVR lives in a second Steam library). It closes SteamVR for you if it needs to (SteamVR locks the driver file while it runs) and double checks that every file actually copied.
+- **Auto-downloads and installs the driver:** When you click the Download/Update button it will download the correct files from this repo and install them into SteamVR's own folder (even if SteamVR lives in a second Steam library). Before swapping any files it shows a "Please close Steam" window and waits until Steam and SteamVR are fully closed (they lock the driver file while they run). It never closes them for you, so no running game or Steam Cloud sync gets interrupted, and it continues on its own once they're closed. It also double checks that every file actually copied.
 - **Movement Mode:** A dedicated toggle that intercepts the look keys, remaps `Q`/`E` to Skyrim's native menu-navigation numpad layout, and remaps Left Shift to Left Alt. Why does it do those things? First off, the only way to navigate specific between tabs in some menus is with Numpad8 and Numpad5, specifically the settings menu. It intercepts Left Shift and sends Left Alt because of what i said earlier. Left Shift is crouch, found out that Left Alt is sprint so i remapped that. Also we intercept E at all times while movement mode is enabled because the game will just crash if you press E. It pauses itself while SkyrimVR's own console is open so you can type in it.
 - **Quick console commands:** 20 customizable one click buttons for common testing commands (god mode, noclip, speed changes, teleporting, a janky ass infinite candlelight toggle). You edit them right in the window (tick "Edit mode", or just right click a button), plus a console command box with history, for when you need something the buttons don't cover because trying to type in the console is a pain in the ass for VR, even with this driver.
 - **Settings:** Turn sensitivity and speed (changes apply live, no SteamVR restart), mouse sensitivity / invert Y / an off switch for mouse look, rebindable keys, and the virtual headset's render resolution and frame rate (Quest 2/3, Index, Reverb G2 etc, or a custom size). All of it is saved between launches.
 - **Update check (optional):** Lets you know when there's a new Devkit release or driver. It asks the first time, and it only reads dates, nothing about you is sent.
-- **Copy Diagnostics:** One button that copies everything useful for a bug report, with your Windows user name scrubbed out.
+- **Driver checks:** The Devkit doesn't just look for the driver, it verifies it. It confirms `driver_null.dll` really is the Devkit's (Steam updating or verifying SteamVR can put SteamVR's own back) and checks it against the SHA-256 shipped with each driver zip, then offers "Update / Repair Driver" if something is off.
+- **Copy Diagnostics:** One button that copies everything useful for a bug report, with your Windows user name scrubbed out. It includes the driver's own status report (`driver_status.txt`: what the driver sees, such as the heartbeat, which keys and mouse activity), so a bug report shows whether the driver is actually receiving the Devkit's input.
 - **A consent screen:** On first run, since the tool does download files, read/write settings, press keys on its own (the ghost keys), briefly touch your clipboard when sending console commands, and the driver watches your mouse for mouse look, i figured adding a consent screen would be nice. Everything is all clearly disclosed up front.
 
 It's basically how you communicate with the driver without a headset or controllers.
@@ -62,7 +63,9 @@ Built in **Visual Studio Community 2022** against **[OpenVR 1.26.7](https://gith
 
 ---
 
-**SkyrimVR Devkit is an unofficial, fan-made modding tool. It is not affiliated with, endorsed by, or associated with Bethesda Softworks or ZeniMax Media.**
+## License
+
+The repository as a whole is under the BSD 3-Clause license, because almost all of it is Valve Software's OpenVR driver sample. The SkyrimVR Devkit script itself (`SkyrimVR Devkit.ahk`, in the Devkit release zip) is licensed under the GNU General Public License v3, and its `LICENSE.txt` ships in that zip.
 
 Note: Older releases includes a portable, renamed copy of the AutoHotkey interpreter engine, which is distributed under the GNU General Public License v2. 
 
