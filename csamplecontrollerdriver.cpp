@@ -196,6 +196,9 @@ void CSampleControllerDriver::RunFrame()
     }
     else {
         //Controller2
+        // Select (F24, the frontend's Select key): A and the trigger together. SteamVR's dashboard clicks with the
+        // trigger where the laser points (the controllers turn with the view), dialogs that ask for A take A.
+        const bool select = DevkitInput::GetButtonA();
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[0], (0x8000 & GetAsyncKeyState(VK_F13)) != 0, 0);  // System
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[1], false, 0);  // Application Menu
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[2], false, 0);  // Grip
@@ -203,10 +206,11 @@ void CSampleControllerDriver::RunFrame()
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[4], false, 0);  // D-pad Up
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[5], false, 0);  // D-pad Right
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[6], false, 0);  // D-pad Down
-        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], false, 0);  // A
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[7], select, 0);  // A (Select)
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[8], false, 0);  // B
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[9], false, 0);  // X
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[10], false, 0); // Y
+        vr::VRDriverInput()->UpdateBooleanComponent(HButtons[11], select, 0); // Trigger Click (Select)
         bool interactTouch = false, interactClick = false;
         DevkitInput::GetTrackpad(interactTouch, interactClick);
         vr::VRDriverInput()->UpdateBooleanComponent(HButtons[13], interactClick || (0x8000 & GetAsyncKeyState(VK_F14)) != 0, 0); // Trackpad Click
@@ -215,7 +219,7 @@ void CSampleControllerDriver::RunFrame()
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[0], 0.0, 0); //Trackpad x
         vr::VRDriverInput()->UpdateScalarComponent(HAnalog[1], 0.0, 0); //Trackpad y
 
-        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], 0.0, 0); //Trigger
+        vr::VRDriverInput()->UpdateScalarComponent(HAnalog[2], select ? 1.0f : 0.0f, 0); //Trigger (Select)
     }
 
     if (m_unObjectId != vr::k_unTrackedDeviceIndexInvalid) {
