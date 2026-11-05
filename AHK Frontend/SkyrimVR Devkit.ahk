@@ -21,6 +21,7 @@ for action in ControlActions
 ; with the trigger where the laser points (aim with the look keys or the mouse), A prompts take A.
 GhostKeys := Map("LookUp", "F16", "LookDown", "F17", "LookLeft", "F18", "LookRight", "F19", "Interact", "F20", "PressA", "F24")
 GhostHeld := Map("LookUp", false, "LookDown", false, "LookLeft", false, "LookRight", false, "Interact", false, "PressA", false)
+GhostPulses := Map()
 GhostReposition := "F21"
 GhostReset      := "F22"
 GhostHeartbeat  := "F23"
@@ -48,7 +49,8 @@ MovementKeyDefaults := Map(
     "Interact",    "sc013", ; R
     "PressA",      "sc022"  ; G
 )
-MovementKeyBinds := Map()
+; Defaults until LoadKeyBinds runs: MainTick starts first and must find every action's key.
+MovementKeyBinds := MovementKeyDefaults.Clone()
 
 ; The game's own exe, and launchers that load the game into their own process (urSovngarde, the co-op mod, also
 ; under its old name SkyrimTogetherVR.exe), so the game window belongs to them. More names: [Game] ExtraExes in
@@ -538,8 +540,8 @@ BuildQuickCommandsWindow(x := "", y := "") {
     QuickCommandsGui.MarginY := 15
     ApplyDarkTitlebar(QuickCommandsGui)
 
-    BtnCloseDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Close Dashboard")
-    BtnCloseDash.OnEvent("Click", (*) => TestPulse("F13"))
+    BtnToggleDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Toggle Dashboard")
+    BtnToggleDash.OnEvent("Click", (*) => TestPulse("F13"))
 
     BtnNudge := QuickCommandsGui.AddButton("x235 y15 w200 h28", "Move to Console View")
     BtnNudge.OnEvent("Click", MoveToConsoleView)
@@ -1247,10 +1249,19 @@ TapKey(key, holdMs) {
     Sleep(holdMs)
 }
 
+; A Quick Commands press. A ghost key held here stays held through SyncGhostKeys (GhostPulses) until the pulse ends.
 TestPulse(key) {
-    GhostSend(key, true)
-    Sleep(300)
-    GhostSend(key, false)
+    global GhostPulses
+    if GhostPulses.Has(key)
+        return
+    GhostPulses[key] := true
+    try {
+        GhostSend(key, true)
+        Sleep(300)
+    } finally {
+        GhostPulses.Delete(key)
+        GhostSend(key, false)
+    }
 }
 
 GhostSend(ghost, down) {
@@ -1259,12 +1270,12 @@ GhostSend(ghost, down) {
 }
 
 SyncGhostKeys() {
-    global MovementMode, MovementKeyBinds, GhostKeys, GhostHeld
+    global MovementMode, MovementKeyBinds, GhostKeys, GhostHeld, GhostPulses
     global GhostHeartbeat, HeartbeatEveryMs, HeartbeatState, HeartbeatLastMs, HeartbeatSent
 
     static interactDownTick := 0
     for action, ghost in GhostKeys {
-        want := MovementMode && GetKeyState(MovementKeyBinds[action], "P")
+        want := GhostPulses.Has(ghost) || (MovementMode && GetKeyState(MovementKeyBinds[action], "P"))
         if action = "Interact" {
             if want && !GhostHeld[action]
                 interactDownTick := A_TickCount
@@ -1297,10 +1308,12 @@ FreeStuckMouseClip() {
         DllCall("ClipCursor", "Ptr", 0)
 }
 
-ReleaseGhostKeys(*) {
-    global GhostKeys, GhostHeld, GhostHeartbeat, HeartbeatState
+ReleaseGhostKeys(preservePulses := false) {
+    global GhostKeys, GhostHeld, GhostHeartbeat, HeartbeatState, GhostPulses
     FreeStuckMouseClip()
     for action, ghost in GhostKeys {
+        if preservePulses && GhostPulses.Has(ghost)
+            continue
         if GhostHeld[action] || GetKeyState(ghost) {
             GhostSend(ghost, false)
             GhostHeld[action] := false
@@ -1551,7 +1564,6 @@ if IniRead(BootstrapFile, "Setup", "Completed", "0") != "1" {
         ShowSetupChecklist()
 }
 
-SetTimer(CheckForUpdates, -1500)
 
 WriteDriverControls()
 
@@ -1574,7 +1586,7 @@ UpdateLiveMovementMode() {
     MovementMode := MovementModeRequested && !ConsoleDialogOpen && !GameConsoleOpen && validFocus
     if wasActive && !MovementMode {
         ReleaseSprintAlt()
-        ReleaseGhostKeys()
+        ReleaseGhostKeys(true)
     }
 		
     if !IsSet(MovementLiveText) || !IsObject(MovementLiveText)
@@ -1822,7 +1834,7 @@ WarnIfDriverProblem() {
         what := "The devkit's null driver doesn't look installed (no version marker was found), so SteamVR is probably running its own built-in null driver instead."
     else
         what := "The devkit's null driver is " problem "."
-    answer := MsgBox(what "`n`nWith the wrong driver, the look keys, interact and 'Close Dashboard' will not work, even though Movement Mode says it's on.`n`nOpen the Setup Checklist to fix it?", "Devkit Driver Needed", "YesNo Icon!")
+    answer := MsgBox(what "`n`nWith the wrong driver, the look keys, interact and 'Toggle Dashboard' will not work, even though Movement Mode says it's on.`n`nOpen the Setup Checklist to fix it?", "Devkit Driver Needed", "YesNo Icon!")
     if answer = "Yes"
         ShowSetupChecklist()
 }
@@ -2600,6 +2612,10 @@ UpdateCheckEveryHours := 6
 
 UpdateFetch := Map()
 UpdateFetchBusy := false
+; Started only here, once every global the update check reads exists: a timer set earlier could fire while startup
+; is still held (by a dialog) and find them unset.
+SetTimer(CheckForUpdates, -1500)
+
 
 AsyncHttpGet(url) {
     try {
