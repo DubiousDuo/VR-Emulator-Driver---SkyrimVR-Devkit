@@ -1,5 +1,5 @@
 ============================================================
-SkyrimVR Devkit v2.0.1
+SkyrimVR Devkit v2.0.2
 ============================================================
 
 HOW TO RUN:
@@ -14,7 +14,36 @@ FIRST TIME SETUP:
 
 The devkit opens a Setup Checklist by itself the first time. It walks you through everything, including
 downloading the null driver (the "Download / Install" button, also under Settings). This version needs the
-v2.0.1 null driver, so if you used an older devkit, update the driver there too (the devkit tells you).
+v2.0.2 null driver, so if you used an older devkit, update the driver there too (the devkit tells you).
+
+============================================================
+WHAT'S NEW IN v2.0.2 (since v2.0.1)
+============================================================
+
+LAUNCHER SUPPORT
+
+- Devkit now supports launchers such as urSovngarde and SkyrimTogetherVR.exe by default.
+
+INTERACTING WITH THE STEAMVR HOME WINDOW
+
+- There is now a key (Default G) to allow you to select what you are looking at in the SteamVR Home overlay (Part of supporting SkyrimVR urSovngarde).
+- Button is rebindable in Settings > Keybinds.
+
+BUTTON CHANGES?!??!? WOW!
+
+- Also adds a button for said SteamVR Home window interaction to Quick Commands, in replace of a now defunct button that I left there on accident.
+
+MORE KEYBOARD LAYOUT FIXES
+
+- This hopefully might be the last fix for keyboard layout differences. In specific layouts (German so far)  the console key is the dead key ^. 
+A pending ^ combined with the next key and ended up in the line, so commands failed silently. A space ends a pending dead key and backspaces clear the rest before the paste.
+
+- Bumped up the DefaultMS to 40ms from 25ms because there was a report that the default of 25ms caused issues since keys could fall in between game frames and be ignored (Default of 30fps).
+
+SMALLER CHANGES
+
+- The frontend now writes specific Process ID's (PID) to a file as a backup incase something goes wrong with detecting required executables (urSovngarde, SkyrimTogetherVR.exe)
+- The "Enable Null Driver in SteamVR" checkbox is now locked while SteamVR or the game is open as to prevent misclicks.
 
 ============================================================
 WHAT'S NEW IN v2.0.1 (since v2.0)
