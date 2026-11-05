@@ -7,6 +7,7 @@ HOW TO RUN:
 1. Download and Install AutoHotKey v2.0 from https://www.autohotkey.com/
 
 2. Double click "SkyrimVR Devkit.ahk" to open the devkit.
+   Keep icons/MM-OFF.png and icons/MM-ON.png beside the script in its icons folder.
 
 You can open the .ahk file in any text editor to make modifications easily.
 
@@ -15,6 +16,42 @@ FIRST TIME SETUP:
 The devkit opens a Setup Checklist by itself the first time. It walks you through everything, including
 downloading the null driver (the "Download / Install" button, also under Settings). This version needs the
 v2.0.2 null driver, so if you used an older devkit, update the driver there too (the devkit tells you).
+
+============================================================
+CONTROLLER AND TRAY CONTROLS
+============================================================
+
+These controls need a driver rebuilt from the matching source. The frontend alone cannot add
+controller inputs to an older DLL. Driver version numbering is unchanged here.
+
+- Select defaults to G; Right Grip defaults to H. Left Pad Click and Left Pad Touch start unbound.
+  Change them in Settings > Keybinds; Backspace clears a binding. Existing saved bindings win over
+  conflicting defaults. The new controller buttons release when Movement Mode pauses or its heartbeat
+  stops. They use a local shared-memory mapping, not extra simulated keyboard keys.
+- Ctrl+Shift+M toggles Movement Mode globally, including while it is off. Change the combination in
+  Settings > Keybinds > Movement Mode toggle, then Apply. Reset All restores Ctrl+Shift+M.
+  Conflicts and save failures leave the previous shortcut active.
+- Closing the main window hides it in the tray. Open or double-click restores it; Quit exits.
+  The tray also provides Movement Mode, Settings, and Enable Null Driver in SteamVR.
+  The driver toggle retains the checkbox's backup safeguards and is locked while SteamVR or a supported
+  game/launcher runs. Restart SteamVR after changing it; its checkmark shows configuration, not loading.
+- Tray, title-bar and taskbar icons show requested Movement Mode (ON/OFF), including hidden/new windows.
+  Temporary focus/console pauses do not change that icon; the main window's Live line shows active input.
+  Keep both PNG icons when distributing the frontend; no compiled frontend EXE is required.
+- Settings > General > Enable MM Notification is off by default and saved between launches.
+  When enabled, toggles request silent Windows tray notifications; Windows may suppress them.
+- Enabling Movement Mode from the window or tray reinstalls the keyboard hook once. The shortcut keeps
+  its existing physical held-key tracking; this is not continuous hook recovery.
+
+OFFLINE CHECKS (from the repository root):
+
+- python tests/frontend_tray_check.py (Windows and AutoHotkey v2).
+  Runs the real frontend functions on a separate, non-input desktop with temporary files. Checks
+  shortcut conflicts/persistence, Select binding precedence/pulses, launcher PID publication and icons.
+  VR-session lock and driver-backup checks are skipped if SteamVR is running; close it to run them.
+  It does not start SteamVR, send game input or write your settings.
+- Compile and run tests/grip_input_check.cpp with the Windows C++ toolchain and OpenVR headers.
+  Exercises shared-memory buttons and heartbeat safety without loading SteamVR.
 
 ============================================================
 WHAT'S NEW IN v2.0.2 (since v2.0.1)

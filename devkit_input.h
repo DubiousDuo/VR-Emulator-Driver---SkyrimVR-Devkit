@@ -24,6 +24,10 @@ constexpr int kKeyInteract   = VK_F20;
 constexpr int kKeyReposition = VK_F21;
 constexpr int kKeyReset      = VK_F22;
 constexpr int kKeyHeartbeat  = VK_F23;
+constexpr unsigned kRightGripBit = 1u << 16;
+constexpr unsigned kLeftTrackpadClickBit = 1u << 12;
+constexpr unsigned kLeftTrackpadTouchBit = 1u << 13;
+constexpr wchar_t kButtonMappingName[] = L"Local\\SkyrimVRDevkit.ControllerButtons.v1";
 constexpr int kKeyButtonA    = VK_F24; // Select: the right controller's A and trigger, held as long as the key is (SteamVR's dashboard)
 
 constexpr double kHeartbeatTimeout   = 0.4;   // seconds without a heartbeat change = frontend gone
@@ -45,12 +49,50 @@ struct Pose {
 struct Keys {
     bool lookUp = false, lookDown = false, lookLeft = false, lookRight = false;
     bool interact = false, reposition = false, reset = false, heartbeat = false;
+    unsigned buttonWord = 0;
+    bool buttonMappingValid = false;
     bool buttonA = false;
 
     // Mouse, collected by the Raw Input thread since the last frame.
     long mouseDx = 0, mouseDy = 0;
     int  mouseToggles = 0;
     bool gameFocused = false;
+};
+
+struct ButtonMapping {
+    HANDLE handle = nullptr;
+    volatile LONG* view = nullptr;
+    double nextOpen = -1;
+
+    void Close() {
+        if (view) UnmapViewOfFile(const_cast<LONG*>(view));
+        if (handle) CloseHandle(handle);
+        view = nullptr;
+        handle = nullptr;
+        nextOpen = -1;
+    }
+
+    ~ButtonMapping() { Close(); }
+
+    bool Read(double t, unsigned& word) {
+        word = 0;
+        if (!view && t >= nextOpen) {
+            nextOpen = t + 1.0;
+            handle = OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, kButtonMappingName);
+            if (handle) {
+                view = static_cast<volatile LONG*>(MapViewOfFile(handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sizeof(LONG)));
+                if (!view) {
+                    CloseHandle(handle);
+                    handle = nullptr;
+                }
+            }
+        }
+        if (!view) return false;
+        const unsigned value = static_cast<unsigned>(InterlockedCompareExchange(view, 0, 0));
+        if (value & 0xf0000000u) return false;
+        word = value;
+        return true;
+    }
 };
 
 struct Shared {
@@ -74,6 +116,10 @@ struct Shared {
     int    interactState = 0;
     double interactT = 0;
     bool   trackpadTouch = false, trackpadClick = false;
+    ButtonMapping buttonMapping;
+    bool buttonMappingValid = false;
+    bool rightGripRaw = false, rightGrip = false, rightGripEverSeen = false;
+    unsigned leftTrackpadRaw = 0, leftTrackpad = 0, leftTrackpadEverSeen = 0;
     bool   buttonA = false, prevButtonA = false;
     double buttonADown = 0;
 
@@ -210,6 +256,14 @@ inline void Step(Shared& s, const Keys& k, double t)
                | (k.interact ? 16u : 0u) | (k.reposition ? 32u : 0u) | (k.reset ? 64u : 0u) | (k.heartbeat ? 128u : 0u);
     s.seenMask |= s.heldMask;
 
+    s.buttonMappingValid = k.buttonMappingValid;
+    s.rightGripRaw = k.buttonMappingValid && (k.buttonWord & kRightGripBit) != 0;
+    s.rightGripEverSeen = s.rightGripEverSeen || s.rightGripRaw;
+    s.rightGrip = alive && s.rightGripRaw;
+    s.leftTrackpadRaw = k.buttonMappingValid ? k.buttonWord & (kLeftTrackpadClickBit | kLeftTrackpadTouchBit) : 0;
+    s.leftTrackpadEverSeen |= s.leftTrackpadRaw;
+    s.leftTrackpad = alive ? s.leftTrackpadRaw : 0;
+
     if (k.reposition && !s.prevReposition) {
         double x = s.viewX, z = s.viewZ;
         if (s.viewRotate) {
@@ -298,32 +352,20 @@ inline void Step(Shared& s, const Keys& k, double t)
 
 inline void RefreshConfig(Shared& s, double t)
 {
-    if (s.lastCfgCheck >= 0 && (t - s.lastCfgCheck) < 0.5) {
-        return;
-    }
+    if (s.lastCfgCheck >= 0 && (t - s.lastCfgCheck) < 0.5) return;
     s.lastCfgCheck = t;
-
     std::ifstream f(ActionsDir() + "controls.txt");
-    if (!f.is_open()) {
-        s.cfgFound = false;
-        return;
-    }
+    if (!f.is_open()) { s.cfgFound = false; return; }
     s.cfgFound = true;
-    std::string key;
-    double value = 0;
-    while (f >> key >> value) {
-        if (key == "turn_speed" && value > 0 && value < 2000) {
-            s.turnSpeed = value;
-        }
-        else if (key == "mouse_sens" && value > 0 && value < 10) {
-            s.mouseSens = value;
-        }
-        else if (key == "mouse_invert_y") {
-            s.mouseInvertY = (value != 0);
-        }
-        else if (key == "mouse_enabled") {
-            s.mouseEnabled = (value != 0);
-        }
+    std::string key, text;
+    while (f >> key >> text) {
+        char* end = nullptr;
+        const double value = std::strtod(text.c_str(), &end);
+        if (end == text.c_str() || *end != '\0' || !std::isfinite(value)) continue;
+        if (key == "turn_speed" && value > 0 && value < 2000) s.turnSpeed = value;
+        else if (key == "mouse_sens" && value > 0 && value < 10) s.mouseSens = value;
+        else if (key == "mouse_invert_y") s.mouseInvertY = (value != 0);
+        else if (key == "mouse_enabled") s.mouseEnabled = (value != 0);
     }
 }
 
@@ -610,6 +652,15 @@ inline std::string BuildStatus(const Shared& s, double t, bool gameFocused)
     o << "heartbeat_last_change_age " << num << "\n";
     o << "keys_ever_seen " << KeyNames(s.seenMask) << "\n";
     o << "keys_held_now " << KeyNames(s.heldMask) << "\n";
+    o << "controller_buttons_mapping_valid " << (s.buttonMappingValid ? 1 : 0) << "\n";
+    o << "right_grip_raw " << (s.rightGripRaw ? 1 : 0) << "\n";
+    o << "right_grip " << (s.rightGrip ? 1 : 0) << "\n";
+    o << "right_grip_ever_seen " << (s.rightGripEverSeen ? 1 : 0) << "\n";
+    o << "left_trackpad_click_raw " << ((s.leftTrackpadRaw & kLeftTrackpadClickBit) ? 1 : 0) << "\n";
+    o << "left_trackpad_touch_raw " << ((s.leftTrackpadRaw & kLeftTrackpadTouchBit) ? 1 : 0) << "\n";
+    o << "left_trackpad_click " << ((s.leftTrackpad & kLeftTrackpadClickBit) ? 1 : 0) << "\n";
+    o << "left_trackpad_touch " << ((s.leftTrackpad & kLeftTrackpadTouchBit) ? 1 : 0) << "\n";
+    o << "left_trackpad_ever_seen " << s.leftTrackpadEverSeen << "\n";
     o << "game_focused " << (gameFocused ? 1 : 0) << "\n";
     o << "game_pid " << s.gamePid << "\n";
     o << "game_match " << s.gameMatch << "\n";
@@ -683,6 +734,7 @@ inline void Update()
     k.reposition = KeyDown(kKeyReposition);
     k.reset = KeyDown(kKeyReset);
     k.heartbeat = KeyDown(kKeyHeartbeat);
+    k.buttonMappingValid = s.buttonMapping.Read(t, k.buttonWord);
     k.buttonA = KeyDown(kKeyButtonA);
     if (k.reposition && !s.prevReposition) {
         RefreshViewFile(s);
@@ -708,6 +760,9 @@ inline void Shutdown()
         s.mouseLook = false;
         s.mouseGrab = false;
         ApplyMouseGrab(s, nullptr);
+        s.rightGrip = false;
+        s.leftTrackpad = 0;
+        s.buttonMapping.Close();
     }
     StopMouseThread();
 }
@@ -725,6 +780,21 @@ inline void GetTrackpad(bool& touch, bool& click)
     std::lock_guard<std::mutex> lock(s.m);
     touch = s.trackpadTouch;
     click = s.trackpadClick;
+}
+
+inline bool GetRightGrip()
+{
+    Shared& s = S();
+    std::lock_guard<std::mutex> lock(s.m);
+    return s.rightGrip;
+}
+
+inline void GetLeftTrackpad(bool& touch, bool& click)
+{
+    Shared& s = S();
+    std::lock_guard<std::mutex> lock(s.m);
+    touch = (s.leftTrackpad & kLeftTrackpadTouchBit) != 0;
+    click = (s.leftTrackpad & kLeftTrackpadClickBit) != 0;
 }
 
 inline bool GetButtonA()

@@ -1,0 +1,42 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "vive_controller",
+  "device_class": "TrackedDeviceClass_Controller",
+  "resource_root": "null",
+  "driver_name": "null",
+  "legacy_binding": "{htc}/input/legacy_bindings_vive_controller.json",
+  "input_bindingui_mode": "controller_handed",
+  "should_show_binding_errors": true,
+  "input_bindingui_left": {
+    "transform": "scale(-1,1)",
+    "image": "{htc}/icons/vive_wand.svg"
+  },
+  "input_bindingui_right": {
+    "image": "{htc}/icons/vive_wand.svg"
+  },
+  "input_source": {
+    "/input/system": {
+      "type": "button", "click": true,
+      "binding_image_point": [67, 81], "order": 5
+    },
+    "/input/application_menu": {
+      "type": "button", "click": true,
+      "binding_image_point": [64, 35], "order": 4
+    },
+    "/input/grip": {
+      "type": "button", "click": true,
+      "binding_image_point": [52, 87], "order": 3
+    },
+    "/input/trigger": {
+      "type": "trigger", "click": true, "value": true,
+      "binding_image_point": [41, 64], "order": 1
+    },
+    "/input/trackpad": {
+      "type": "trackpad", "click": true, "touch": true,
+      "binding_image_point": [66, 59], "order": 2
+    },
+    "/pose/raw": {"type": "pose", "binding_image_point": [62, 16]},
+    "/output/haptic": {"type": "vibration", "binding_image_point": [66, 59]}
+  },
+  "default_bindings": []
+}
