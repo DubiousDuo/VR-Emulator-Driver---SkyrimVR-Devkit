@@ -541,15 +541,12 @@ BuildQuickCommandsWindow(x := "", y := "") {
     BtnCloseDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Close Dashboard")
     BtnCloseDash.OnEvent("Click", (*) => TestPulse("F13"))
 
-    ; Select: the right controller's A and trigger, for a moment (the Select key holds them as long as it's held)
-    BtnPressA := QuickCommandsGui.AddButton("x15 y+8 w200 h28", "Select (A + trigger)")
-    BtnPressA.OnEvent("Click", (*) => TestPulse("F24"))
-
     BtnNudge := QuickCommandsGui.AddButton("x235 y15 w200 h28", "Move to Console View")
     BtnNudge.OnEvent("Click", MoveToConsoleView)
-
-    BtnResetCam := QuickCommandsGui.AddButton("x15 y+8 w200 h28", "Reset Camera")
-    BtnResetCam.OnEvent("Click", ResetCameraView)
+	
+	; Select: the right controller's A and trigger, for a moment (the Select key holds them as long as it's held)
+    BtnPressA := QuickCommandsGui.AddButton("x15 y+8 w200 h28", "Select (A + trigger)")
+    BtnPressA.OnEvent("Click", (*) => TestPulse("F24"))
 
     chkEdit := QuickCommandsGui.AddCheckBox("x235 yp+4 w200", "Edit mode (click a button to edit it)")
     chkEdit.Value := QuickEditMode ? 1 : 0
