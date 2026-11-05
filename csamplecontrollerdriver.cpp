@@ -74,7 +74,7 @@ vr::EVRInitError CSampleControllerDriver::Activate(vr::TrackedDeviceIndex_t unOb
     // this file tells the UI what to show the user for binding this controller as well as what default bindings should
     // be for legacy or other apps
 
-    // Release packages must include this profile under null/resources/input.
+    // Entirely pointless for this project as SkyrimVR understands OpenVR/SteamVR. Hence why the .json file is missing from the .zip file
     vr::VRProperties()->SetStringProperty(m_ulPropertyContainer, Prop_InputProfilePath_String, "{null}/input/mycontroller_profile.json");
 
     //  Buttons handles

@@ -62,7 +62,7 @@ There's only one real limitation right now. Because of how SkyrimVR's console ac
 
 Built in **Visual Studio Community 2022** against **[OpenVR 1.26.7](https://github.com/ValveSoftware/openvr/releases#release-v1.26.7)**, load up `driver_sample.sln`, set the configuration to **Release | x64** and add the OpenVR headers file as a directory (the project expects `C:\SDKs\OpenVR\openvr-1.26.7\headers`, change the include path in `driver_sample.vcxproj` if yours is elsewhere). The DLL it builds gets renamed `driver_null.dll` and goes in `null\bin\win64\` next to a `devkit_version.txt` that matches the Devkit's expected driver version. Almost all of the Devkit-specific code lives in one header, `devkit_input.h`.
 
-The controller buttons need a driver rebuilt from this source; updating the frontend alone does not add them to an older DLL. This change does not set a new driver version or replace the packaged driver ZIP. For release packaging, include `resources/input/mycontroller_profile.json` as `null/resources/input/mycontroller_profile.json` alongside the rebuilt DLL. It declares the controller components registered by the driver.
+The controller buttons need a driver rebuilt from this source; updating the frontend alone does not add them to an older DLL. This change does not set a new driver version or replace the packaged driver ZIP.
 
 ### Offline checks
 
