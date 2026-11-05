@@ -145,9 +145,9 @@ UpdateLiveMovementMode()
 RepoURL := "https://github.com/DubiousDuo/VR-Emulator-Driver---SkyrimVR-Devkit/raw/main/null%20driver.zip"
 
 ; This is NOT a build/release version for the AHK tool itself, this is for the driver. For anyone reading this, PLEASE don't touch these, this is for the tool to make sure things aren't fucked.
-ExpectedDriverVersion := "2.0.1"
+ExpectedDriverVersion := "2.0.2"
 
-ScriptVersion := "2.0.1" ; Same as the other one, except for the Frontend only.
+ScriptVersion := "2.0.2" ; Same as the other one, except for the Frontend only.
 
 CandlelightOn := false
 
