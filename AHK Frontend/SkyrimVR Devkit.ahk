@@ -1564,10 +1564,6 @@ if IniRead(BootstrapFile, "Setup", "Completed", "0") != "1" {
         ShowSetupChecklist()
 }
 
-; Set before the timer: startup can still be short of the update code when it fires (a dialog open).
-UpdateFetch := Map()
-UpdateFetchBusy := false
-SetTimer(CheckForUpdates, -1500)
 
 WriteDriverControls()
 
@@ -2613,6 +2609,12 @@ ToggleDriverEnabled(ctrl, *) {
 
 RepoApi := "https://api.github.com/repos/DubiousDuo/VR-Emulator-Driver---SkyrimVR-Devkit"
 UpdateCheckEveryHours := 6
+
+UpdateFetch := Map()
+UpdateFetchBusy := false
+; Started only here, once every global the update check reads exists: a timer set earlier could fire while startup
+; is still held (by a dialog) and find them unset.
+SetTimer(CheckForUpdates, -1500)
 
 
 AsyncHttpGet(url) {
