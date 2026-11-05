@@ -4,13 +4,20 @@
 DllCall("winmm\timeBeginPeriod", "UInt", 1)
 OnExit((*) => DllCall("winmm\timeEndPeriod", "UInt", 1))
 
+; Keep the frontend's taskbar group separate from other AutoHotkey scripts.
+DllCall("shell32\SetCurrentProcessExplicitAppUserModelID", "WStr", "SkyrimVR.Devkit", "Int")
+
+; Set the application icon before creating windows.
+try SetFrontendIcon(A_ScriptDir "\icons\MM-OFF.png")
+
 TurnSpeed  := 216.0
 TurnSensitivity := 1.0
 LookTickMs := 16.66
 ConsoleMS  := 25
 
 MenuActions     := ["MoveUp", "MoveDown"]
-ControlActions  := ["LookUp", "LookDown", "LookLeft", "LookRight", "Interact", "PressA"]
+ControlActions  := ["LookUp", "LookDown", "LookLeft", "LookRight", "Interact", "RightGrip", "LeftTrackpadClick", "LeftTrackpadTouch", "PressA"]
+ControllerButtonBits := Map("RightGrip", 65536, "LeftTrackpadClick", 4096, "LeftTrackpadTouch", 8192)
 AllBindActions  := []
 for action in MenuActions
     AllBindActions.Push(action)
@@ -21,6 +28,7 @@ for action in ControlActions
 ; with the trigger where the laser points (aim with the look keys or the mouse), A prompts take A.
 GhostKeys := Map("LookUp", "F16", "LookDown", "F17", "LookLeft", "F18", "LookRight", "F19", "Interact", "F20", "PressA", "F24")
 GhostHeld := Map("LookUp", false, "LookDown", false, "LookLeft", false, "LookRight", false, "Interact", false, "PressA", false)
+GhostPulses := Map()
 GhostReposition := "F21"
 GhostReset      := "F22"
 GhostHeartbeat  := "F23"
@@ -36,6 +44,9 @@ MovementKeyLabels := Map(
     "LookLeft",    "Look Left",
     "LookRight",   "Look Right",
     "Interact",    "Interact",
+    "RightGrip",   "Right Grip",
+    "LeftTrackpadClick", "L Pad Click",
+    "LeftTrackpadTouch", "L Pad Touch",
     "PressA",      "Select (A)"
 )
 MovementKeyDefaults := Map(
@@ -46,10 +57,13 @@ MovementKeyDefaults := Map(
     "LookLeft",    "sc14B", ; Left arrow
     "LookRight",   "sc14D", ; Right arrow
     "Interact",    "sc013", ; R
+    "RightGrip",   "sc023", ; H (G is Select, as upstream)
+    "LeftTrackpadClick", "",
+    "LeftTrackpadTouch", "",
     "PressA",      "sc022"  ; G
 )
-MovementKeyBinds := Map()
-
+; Defaults until LoadKeyBinds runs: MainTick starts first and must find every action's key.
+MovementKeyBinds := MovementKeyDefaults.Clone()
 ; The game's own exe, and launchers that load the game into their own process (urSovngarde, the co-op mod, also
 ; under its old name SkyrimTogetherVR.exe), so the game window belongs to them. More names: [Game] ExtraExes in
 ; steam_location.ini, comma separated.
@@ -111,6 +125,16 @@ ActionDir    := ""
 ControlsFile := ""
 
 MovementModeRequested := false
+MMNotificationEnabled := false
+MovementToggleHotkey := ""
+MovementToggleHotkeyDefault := "^+m"
+MovementToggleHeld := false
+MovementToggleEdit := ""
+TrayControlsInitialized := false
+TrayMovementItemLabel := ""
+TrayMovementIconAttemptedState := ""
+
+
 MovementMode := false
 ConsoleDialogOpen := false
 ConsoleDialogHwnd := 0
@@ -124,6 +148,7 @@ MouseSensitivity := 1.0
 MouseBaseSens := 0.05
 MouseInvertY := false
 DownloadBusy := false
+
 
 SetupGui := ""
 SetupRows := Map()
@@ -140,6 +165,7 @@ RenderPresets := [
     {Name: "HTC Vive Pro 2",                  W: 2448, H: 2448}
 ]
 FpsOptions := [30, 45, 60, 72, 80, 90, 120, 144]
+InitControllerButtonsMapping()
 UpdateLiveMovementMode()
 
 RepoURL := "https://github.com/DubiousDuo/VR-Emulator-Driver---SkyrimVR-Devkit/raw/main/null%20driver.zip"
@@ -268,7 +294,7 @@ HowToSections := [
         "This section explains how to move, look around and do things.`n`n"
 		"It's quite simple to be fair. You move around with WASD, look around with the arrow keys, navigate system menus with Q/E, interact with objects by pressing R, sprint by using Left Shift. No arrow keys on your keyboard (or they don't work)? Open Settings > Keybinds and rebind look, interact and the menu keys to whatever you like.`n`n"
 		"Most stock Skyrim keys work. TAB opens the cross menu, ESC opens the settings menu, J opens the journal, etc.`n`n"
-		"If you need to look at something more closey, such as a menu or the console to read data off of it, open 'Quick Commands...' and press 'Move to Console View', which puts the camera at a spot where the console is readable ('Reset Camera' puts it back). If you'd rather not do that by hand, tick 'Auto console view' in Settings > Controls and the camera moves in when you open the game console with ~ and back when you close it. There's no free camera movement any more, because moving the camera directly tends to screw things up.`n`n"
+		"If you need to look at something more closey, such as a menu or the console to read data off of it, open 'Quick Commands...' and press 'Move to Console View', which puts the camera at a spot where the console is readable. Tick 'Auto console view' in Settings > Controls to move the camera in when you open the game console with ~ and back when you close it. Quick Commands also has 'Select (A + trigger)' for SteamVR overlay interaction; hold the rebindable Select key (G by default) for a longer press. There's no free camera movement any more, because moving the camera directly tends to screw things up.`n`n"
 			"MOUSE LOOK: you can also look around with the mouse. While Movement Mode is live and SkyrimVR is focused, RIGHT-CLICK in the game to turn mouse look on; the cursor gets held in the middle of the window and moving the mouse turns the view. Right-click again to turn it off and get your cursor back. It turns itself off, within about half a second, whenever Movement Mode pauses (console open, you click away from the game, the devkit closes), so you'll never be stuck without a cursor. Sensitivity, invert Y and an off switch are in Settings > Controls. This is done by the null driver, so it needs the v2.0 driver."
     )},
     {Title: "Movement Mode", Body:
@@ -327,11 +353,13 @@ if !DirExist(Root)
     DirCreate(Root)
 BootstrapFile := Root "\steam_location.ini"
 CommandsFile  := Root "\commands.ini"
+EnsureGameGroup()
 
 LoadControlSettings() {
-    global TurnSpeed, TurnSensitivity, ConsoleMS, BootstrapFile, AutoConsoleView
+    global TurnSpeed, TurnSensitivity, ConsoleMS, BootstrapFile, AutoConsoleView, MMNotificationEnabled
     global MouseLookEnabled, MouseSensitivity, MouseInvertY
     AutoConsoleView := (IniRead(BootstrapFile, "Controls", "AutoConsoleView", "0") = "1")
+    MMNotificationEnabled := (IniRead(BootstrapFile, "Controls", "MMNotificationEnabled", "0") = "1")
     MouseLookEnabled := (IniRead(BootstrapFile, "Controls", "MouseLookEnabled", "1") = "1")
     MouseInvertY := (IniRead(BootstrapFile, "Controls", "MouseInvertY", "0") = "1")
     v := IniRead(BootstrapFile, "Controls", "MouseSensitivity", "")
@@ -349,10 +377,11 @@ LoadControlSettings() {
 }
 
 SaveControlSettings() {
-    global TurnSpeed, TurnSensitivity, ConsoleMS, BootstrapFile, AutoConsoleView
+    global TurnSpeed, TurnSensitivity, ConsoleMS, BootstrapFile, AutoConsoleView, MMNotificationEnabled
     global MouseLookEnabled, MouseSensitivity, MouseInvertY
     try {
         IniWrite(AutoConsoleView ? "1" : "0", BootstrapFile, "Controls", "AutoConsoleView")
+        IniWrite(MMNotificationEnabled ? "1" : "0", BootstrapFile, "Controls", "MMNotificationEnabled")
         IniWrite(MouseLookEnabled ? "1" : "0", BootstrapFile, "Controls", "MouseLookEnabled")
         IniWrite(Format("{:.2f}", MouseSensitivity), BootstrapFile, "Controls", "MouseSensitivity")
         IniWrite(MouseInvertY ? "1" : "0", BootstrapFile, "Controls", "MouseInvertY")
@@ -389,6 +418,12 @@ QueueSaveControlSettings() {
 OnAutoConsoleViewChanged(ctrl, *) {
     global AutoConsoleView
     AutoConsoleView := ctrl.Value = 1
+    QueueSaveControlSettings()
+}
+
+OnMMNotificationChanged(ctrl, *) {
+    global MMNotificationEnabled
+    MMNotificationEnabled := ctrl.Value = 1
     QueueSaveControlSettings()
 }
 
@@ -459,7 +494,7 @@ MainGui.MarginX := 15
 MainGui.MarginY := 15
 ApplyDarkTitlebar(MainGui)
 
-MainGui.AddButton("w420", "Launch SteamVR").OnEvent("Click", (*) => Run("steam://rungameid/250820"))
+MainGui.AddButton("w420", "Launch SteamVR").OnEvent("Click", LaunchSteamVR)
 
 MainGui.AddButton("w420 y+8", "Setup Checklist...").OnEvent("Click", ShowSetupChecklist)
 
@@ -538,8 +573,8 @@ BuildQuickCommandsWindow(x := "", y := "") {
     QuickCommandsGui.MarginY := 15
     ApplyDarkTitlebar(QuickCommandsGui)
 
-    BtnCloseDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Close Dashboard")
-    BtnCloseDash.OnEvent("Click", (*) => TestPulse("F13"))
+    BtnToggleDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Toggle Dashboard")
+    BtnToggleDash.OnEvent("Click", (*) => TestPulse("F13"))
 
     BtnNudge := QuickCommandsGui.AddButton("x235 y15 w200 h28", "Move to Console View")
     BtnNudge.OnEvent("Click", MoveToConsoleView)
@@ -721,7 +756,8 @@ SettingsGui := ""
 
 OpenSettings(*) {
     global SettingsGui, DarkBGStr, DarkFGStr, DarkCtrlBG, InputFGStr
-    global SteamDir, LivePath, TurnSensitivity, TurnSpeed, ConsoleMS, AutoConsoleView
+    global SteamDir, LivePath, TurnSensitivity, TurnSpeed, ConsoleMS, AutoConsoleView, MMNotificationEnabled
+    global MovementToggleHotkey, MovementToggleEdit
     global MouseLookEnabled, MouseSensitivity, MouseInvertY, MouseSensLabel
     global SteamEdit, LiveEdit, BtnDownload, SensLabel, SensSlider, BootstrapFile
     global MenuActions, ControlActions, MovementKeyLabels, MovementKeyBinds, MovementKeyDefaults
@@ -761,6 +797,10 @@ OpenSettings(*) {
     chkUpdates.Value := (IniRead(BootstrapFile, "Updates", "Enabled", "") = "1") ? 1 : 0
     chkUpdates.OnEvent("Click", ToggleUpdateCheck)
 
+    chkMMNotification := SettingsGui.AddCheckBox("x35 y+12 w420", "Enable MM Notification")
+    chkMMNotification.Value := MMNotificationEnabled ? 1 : 0
+    chkMMNotification.OnEvent("Click", OnMMNotificationChanged)
+
     SettingsTabs.UseTab(2)
     SettingsGui.AddText("x35 y55 w300", "Turn Sensitivity")
     SensLabel := SettingsGui.AddText("x355 yp w100 Right", Format("{:.2f}x", TurnSensitivity))
@@ -793,15 +833,15 @@ OpenSettings(*) {
     SettingsGui.AddText("x35 y+18 w420 cSilver", "Turning is done by the driver: your turn speed is the base speed times the sensitivity above, and changes apply live (no SteamVR restart). The console delay is how long the console paste sequence waits between steps - raise it if commands fail on a slower system. Mouse look needs the v2. driver: it holds the cursor in the middle of the game window while it's on, and lets go (within about half a second) whenever Movement Mode pauses.")
 
     SettingsTabs.UseTab(3)
-    SettingsGui.AddText("x35 y55 w420 cSilver", "Click a key button, then press the key you want. Escape cancels. Left Shift (sprint) and Left Alt are fixed, and keys the devkit uses internally (F13-F24, Numpad 5 / 8) can't be bound.")
+    SettingsGui.AddText("x35 y55 w420 cSilver", "Click a bind, then press a key. Esc cancels; Backspace clears controller binds. Shift/Alt are fixed; F13-F24 and Numpad 5/8 are reserved.")
 
     KeybindButtons := Map()
     SettingsGui.AddText("x35 y110 w200 cSilver", "Menu navigation")
-    SettingsGui.AddText("x250 y110 w200 cSilver", "Look and interact")
+    SettingsGui.AddText("x250 y110 w200 cSilver", "Look and controller inputs")
     y := 140
     for action in MenuActions {
         SettingsGui.AddText("x35 y" y " w95", MovementKeyLabels[action])
-        btn := SettingsGui.AddButton("x130 y" (y - 4) " w95", StrUpper(GetKeyName(MovementKeyBinds[action])))
+        btn := SettingsGui.AddButton("x130 y" (y - 4) " w95", KeyBindDisplay(MovementKeyBinds[action]))
         btn.OnEvent("Click", RebindMovementKey.Bind(action))
         KeybindButtons[action] := btn
         y += 36
@@ -809,12 +849,17 @@ OpenSettings(*) {
     y := 140
     for action in ControlActions {
         SettingsGui.AddText("x250 y" y " w85", MovementKeyLabels[action])
-        btn := SettingsGui.AddButton("x335 y" (y - 4) " w100", StrUpper(GetKeyName(MovementKeyBinds[action])))
+        btn := SettingsGui.AddButton("x335 y" (y - 4) " w100", KeyBindDisplay(MovementKeyBinds[action]))
         btn.OnEvent("Click", RebindMovementKey.Bind(action))
         KeybindButtons[action] := btn
         y += 36
     }
-    SettingsGui.AddButton("x35 y" (140 + ControlActions.Length * 36 + 6) " w400", "Reset All to Defaults").OnEvent("Click", (*) => ResetKeyBindsToDefaults(KeybindButtons))
+    SettingsGui.AddText("x35 y220 w200", "Movement Mode toggle")
+    MovementToggleEdit := SettingsGui.AddHotkey("x35 y+4 w130", MovementToggleHotkey)
+    SettingsGui.AddButton("x170 yp-1 w65", "Apply").OnEvent("Click", ApplyMovementToggleHotkey)
+    SettingsGui.AddText("x35 y+4 w200 cSilver", "Ctrl/Alt/Shift + key")
+    resetY := 146 + Max(MenuActions.Length, ControlActions.Length) * 36
+    SettingsGui.AddButton("x35 y" resetY " w400", "Reset All to Defaults").OnEvent("Click", (*) => ResetKeyBindsToDefaults(KeybindButtons))
     SettingsTabs.UseTab(4)
     SettingsGui.AddText("x35 y55 w420 cSilver", "These change the devkit's virtual headset. Restart SteamVR after applying. This isn't a benchmark, SteamVR on a desktop is a rough baseline only.")
 
@@ -840,6 +885,7 @@ OpenSettings(*) {
     SettingsGui.AddButton("x35 y+18 w420", "Apply to Null Driver").OnEvent("Click", OnApplyDisplay)
     DispStatus := SettingsGui.AddText("x35 y+10 w420 cSilver", "")
     RefreshDisplayTab()
+
 
     SettingsTabs.UseTab()
 
@@ -1081,6 +1127,7 @@ OfferCleanSlate() {
     Reload()
 }
 
+
 ClampNum(val, lo, hi) {
     val += 0
     if val < lo
@@ -1142,17 +1189,16 @@ BuildRebindCandidateKeys() {
 }
 
 RebindMovementKey(action, ctrl, *) {
-    global MovementKeyBinds, AllBindActions, MovementKeyLabels, SettingsGui
+    global MovementKeyBinds, AllBindActions, MovementKeyLabels, SettingsGui, ControllerButtonBits
 
     original := ctrl.Text
     try {
-        ctrl.Text := "Press a key... (Esc cancels)"
+        ctrl.Text := "Press key... (Esc cancels)"
         ctrl.Enabled := false
         if IsObject(SettingsGui)
             SettingsGui.Opt("+Disabled")
 
         candidates := BuildRebindCandidateKeys()
-
         releaseDeadline := A_TickCount + 2000
         loop {
             stillDown := false
@@ -1189,22 +1235,25 @@ RebindMovementKey(action, ctrl, *) {
         if IsObject(SettingsGui)
             SettingsGui.Opt("-Disabled")
         ctrl.Enabled := true
-
         if escaped || pressedKey = "" {
             ctrl.Text := original
             return
         }
 
-        newSc := Format("sc{:03X}", GetKeySC(pressedKey))
-
+        newSc := (ControllerButtonBits.Has(action) || action = "PressA") && pressedKey = "Backspace" ? "" : Format("sc{:03X}", GetKeySC(pressedKey))
         if newSc = "sc029" {
             MsgBox("That key is reserved for opening the console. Pick a different key.", "Key Reserved", "IconX")
             ctrl.Text := original
             return
         }
+        if newSc != "" && newSc = MovementToggleBaseSC() {
+            MsgBox("That key is the base key of the Movement Mode shortcut. Change that shortcut first.", "Key Already Bound", "IconX")
+            ctrl.Text := original
+            return
+        }
 
         for otherAction in AllBindActions {
-            if otherAction != action && MovementKeyBinds[otherAction] = newSc {
+            if newSc != "" && otherAction != action && MovementKeyBinds[otherAction] = newSc {
                 MsgBox(StrUpper(GetKeyName(newSc)) " is already bound to " MovementKeyLabels[otherAction] ". Pick a different key, or rebind that action first.", "Key Already Bound", "IconX")
                 ctrl.Text := original
                 return
@@ -1214,8 +1263,8 @@ RebindMovementKey(action, ctrl, *) {
         oldBinds := MovementKeyBinds.Clone()
         MovementKeyBinds[action] := newSc
         RegisterMovementHotkeys(oldBinds)
-        SaveKeyBind(action, newSc)
-        ctrl.Text := StrUpper(GetKeyName(newSc))
+        SaveKeyBind(action, newSc = "" ? "none" : newSc)
+        ctrl.Text := KeyBindDisplay(newSc)
     } catch as e {
         try {
             if IsObject(SettingsGui)
@@ -1230,13 +1279,168 @@ RebindMovementKey(action, ctrl, *) {
 ResetKeyBindsToDefaults(KeybindButtons) {
     global MovementKeyBinds, AllBindActions, MovementKeyDefaults
     oldBinds := MovementKeyBinds.Clone()
-    for action in AllBindActions {
+    for action in AllBindActions
         MovementKeyBinds[action] := MovementKeyDefaults[action]
-        SaveKeyBind(action, MovementKeyDefaults[action])
+    ; Reset the shortcut against the proposed defaults before enabling any conflicting gameplay key.
+    try ResetMovementToggleHotkey()
+    catch as e {
+        MovementKeyBinds := oldBinds
+        MsgBox(e.Message, "Movement Mode Shortcut", "IconX")
+        return
     }
     RegisterMovementHotkeys(oldBinds)
+    for action in AllBindActions {
+        SaveKeyBind(action, MovementKeyBinds[action] = "" ? "none" : MovementKeyBinds[action])
+        KeybindButtons[action].Text := KeyBindDisplay(MovementKeyBinds[action])
+    }
+}
+
+MovementToggleContext(*) {
+    global MovementToggleHotkey, MovementToggleEdit, MovementToggleHeld
+    try {
+        if IsObject(MovementToggleEdit) && MovementToggleEdit.Focused
+            return false
+    }
+    if MovementToggleHeld
+        return true
+    ; Sprint remaps Shift to synthetic Alt; match physical modifiers, not that logical state.
+    return MovementToggleHotkey != "" && !GetKeyState("LWin", "P") && !GetKeyState("RWin", "P")
+        && (!!GetKeyState("Ctrl", "P") = !!InStr(MovementToggleHotkey, "^"))
+        && (!!GetKeyState("Alt", "P") = !!InStr(MovementToggleHotkey, "!"))
+        && (!!GetKeyState("Shift", "P") = !!InStr(MovementToggleHotkey, "+"))
+}
+
+ToggleMovementModeFromHotkey(*) {
+    global MovementToggleHeld
+    if MovementToggleHeld
+        return
+    MovementToggleHeld := true
+    ToggleMovementMode()
+}
+
+ReleaseMovementToggle(*) {
+    global MovementToggleHeld
+    MovementToggleHeld := false
+}
+
+MovementToggleBaseKeyName() {
+    global MovementToggleHotkey
+    return RegExReplace(MovementToggleHotkey, "^[!+^]+")
+}
+
+ParseMovementToggleHotkey(value, &combo, &baseSC) {
+    combo := ""
+    baseSC := ""
+    if !RegExMatch(value, "^([!+^]+)([^!+^].*)$", &m)
+        return false
+    mods := m[1], key := GetKeyName(m[2])
+    if StrLen(mods) != (InStr(mods, "^") > 0) + (InStr(mods, "!") > 0) + (InStr(mods, "+") > 0)
+        return false
+    vk := GetKeyVK(key)
+    baseSC := Format("sc{:03X}", GetKeySC(key))
+    if !vk || baseSC = "sc000" || (vk >= 0x7C && vk <= 0x87)
+        || RegExMatch(key, "i)^(?:(?:L|R)?(?:Control|Ctrl|Shift|Alt|Win))$")
+        || baseSC = "sc029" || baseSC = "sc04C" || baseSC = "sc048" || baseSC = "sc012"
+        return false
+    combo := (InStr(mods, "^") ? "^" : "") (InStr(mods, "!") ? "!" : "") (InStr(mods, "+") ? "+" : "") key
+    return true
+}
+
+MovementToggleHotkeyDisplay() {
+    global MovementToggleHotkey
+    if MovementToggleHotkey = ""
+        return "Unavailable"
+    label := ""
+    if InStr(MovementToggleHotkey, "^")
+        label .= "Ctrl+"
+    if InStr(MovementToggleHotkey, "!")
+        label .= "Alt+"
+    if InStr(MovementToggleHotkey, "+")
+        label .= "Shift+"
+    return label StrUpper(MovementToggleBaseKeyName())
+}
+
+MovementToggleBaseSC(combo := "") {
+    global MovementToggleHotkey
+    combo := combo != "" ? combo : MovementToggleHotkey
+    return ParseMovementToggleHotkey(combo, &canonical, &baseSC) ? baseSC : ""
+}
+
+RegisterMovementToggle(combo, enable) {
+    sc := MovementToggleBaseSC(combo)
+    options := enable ? "On T1 B0" : "Off"
+    ; Scan-code key-up follows the same physical key even when NumLock changes its virtual key.
+    HotIf()
+    Hotkey("~*" sc " Up", ReleaseMovementToggle, options)
+    HotIf(MovementToggleContext)
+    try Hotkey("*" sc, ToggleMovementModeFromHotkey, options)
+    catch {
+        HotIf()
+        Hotkey("~*" sc " Up", , enable ? "Off" : "On")
+        throw
+    } finally HotIf()
+}
+
+SetMovementToggleHotkey(value, persist := true) {
+    global MovementToggleHotkey, MovementToggleHeld, AllBindActions, MovementKeyBinds, MovementKeyLabels, BootstrapFile
+    if !ParseMovementToggleHotkey(value, &combo, &baseSC)
+        throw ValueError("Choose Ctrl, Alt, and/or Shift plus a key. Console, sprint/Alt, F13-F24 and Numpad 5/8 are reserved.")
     for action in AllBindActions
-        KeybindButtons[action].Text := StrUpper(GetKeyName(MovementKeyDefaults[action]))
+        if MovementKeyBinds[action] = baseSC
+            throw ValueError("That key is already used by " MovementKeyLabels[action] ". Rebind that action first.")
+    oldCombo := MovementToggleHotkey
+    sameBase := baseSC = MovementToggleBaseSC()
+    if combo != oldCombo {
+        ; Hotkey() otherwise silently falls back to a hook when Windows rejects a conflict.
+        mods := (InStr(combo, "!") ? 1 : 0) | (InStr(combo, "^") ? 2 : 0) | (InStr(combo, "+") ? 4 : 0)
+        if !DllCall("RegisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF, "UInt", mods, "UInt", GetKeyVK(RegExReplace(combo, "^[!+^]+")))
+            throw Error("Windows could not register that shortcut. The existing shortcut remains active.")
+        DllCall("UnregisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF)
+        if !sameBase
+            RegisterMovementToggle(combo, true)
+    }
+    try {
+        if persist
+            IniWrite(combo, BootstrapFile, "KeyBinds", "MovementModeToggle")
+    } catch as e {
+        if !sameBase
+            RegisterMovementToggle(combo, false)
+        throw Error("The shortcut could not be saved. The existing shortcut remains active.", , e.Message)
+    }
+    if oldCombo != "" && !sameBase
+        RegisterMovementToggle(oldCombo, false)
+    MovementToggleHotkey := combo
+    if !sameBase
+        MovementToggleHeld := false
+    UpdateTrayControls()
+}
+
+LoadMovementToggleHotkey() {
+    global MovementToggleHotkeyDefault, BootstrapFile
+    candidate := IniRead(BootstrapFile, "KeyBinds", "MovementModeToggle", MovementToggleHotkeyDefault)
+    try SetMovementToggleHotkey(candidate, false)
+    catch as e
+        LogError("LoadMovementToggleHotkey: " e.Message)
+}
+
+ApplyMovementToggleHotkey(*) {
+    global MovementToggleEdit, MovementToggleHotkey
+    try {
+        SetMovementToggleHotkey(MovementToggleEdit.Value)
+        MovementToggleEdit.Value := MovementToggleHotkey
+    } catch as e
+        MsgBox(e.Message, "Movement Mode Shortcut", "IconX")
+}
+
+ResetMovementToggleHotkey() {
+    global MovementToggleHotkeyDefault, MovementToggleEdit, MovementToggleHotkey
+    SetMovementToggleHotkey(MovementToggleHotkeyDefault)
+    if IsObject(MovementToggleEdit)
+        MovementToggleEdit.Value := MovementToggleHotkey
+}
+
+KeyBindDisplay(scancode) {
+    return scancode = "" ? "NONE" : StrUpper(GetKeyName(scancode))
 }
 
 ; Presses and releases a key, held for holdMs (the game must see it down in at least one frame)
@@ -1248,9 +1452,17 @@ TapKey(key, holdMs) {
 }
 
 TestPulse(key) {
-    GhostSend(key, true)
-    Sleep(300)
-    GhostSend(key, false)
+    global GhostPulses
+    if GhostPulses.Has(key)
+        return
+    GhostPulses[key] := true
+    try {
+        GhostSend(key, true)
+        Sleep(300)
+    } finally {
+        GhostPulses.Delete(key)
+        GhostSend(key, false)
+    }
 }
 
 GhostSend(ghost, down) {
@@ -1259,12 +1471,13 @@ GhostSend(ghost, down) {
 }
 
 SyncGhostKeys() {
-    global MovementMode, MovementKeyBinds, GhostKeys, GhostHeld
+    global MovementMode, MovementKeyBinds, GhostKeys, GhostHeld, GhostPulses
     global GhostHeartbeat, HeartbeatEveryMs, HeartbeatState, HeartbeatLastMs, HeartbeatSent
 
     static interactDownTick := 0
     for action, ghost in GhostKeys {
-        want := MovementMode && GetKeyState(MovementKeyBinds[action], "P")
+        scancode := MovementKeyBinds[action]
+        want := GhostPulses.Has(ghost) || (MovementMode && scancode != "" && GetKeyState(scancode, "P"))
         if action = "Interact" {
             if want && !GhostHeld[action]
                 interactDownTick := A_TickCount
@@ -1297,10 +1510,13 @@ FreeStuckMouseClip() {
         DllCall("ClipCursor", "Ptr", 0)
 }
 
-ReleaseGhostKeys(*) {
-    global GhostKeys, GhostHeld, GhostHeartbeat, HeartbeatState
+ReleaseGhostKeys(preservePulses := false) {
+    global GhostKeys, GhostHeld, GhostHeartbeat, HeartbeatState, GhostPulses
+    SetControllerButtons(0)
     FreeStuckMouseClip()
     for action, ghost in GhostKeys {
+        if preservePulses && GhostPulses.Has(ghost)
+            continue
         if GhostHeld[action] || GetKeyState(ghost) {
             GhostSend(ghost, false)
             GhostHeld[action] := false
@@ -1317,6 +1533,7 @@ ReleaseGhostKeysOnExit(*) {
     return 0
 }
 OnExit(ReleaseGhostKeysOnExit)
+OnExit(CloseControllerButtonsMapping)
 
 MoveToConsoleView(*) {
     global GhostReposition
@@ -1411,7 +1628,7 @@ CopyDiagnostics(*) {
 
     text .= "`nKeybinds:"
     for action in AllBindActions
-        text .= " " action "=" StrUpper(GetKeyName(MovementKeyBinds[action])) "(" MovementKeyBinds[action] ")"
+        text .= " " action "=" KeyBindDisplay(MovementKeyBinds[action]) "(" (MovementKeyBinds[action] = "" ? "none" : MovementKeyBinds[action]) ")"
     text .= "`n"
     if ReadDisplaySettings(&dw, &dh, &dfps)
         text .= "Driver display settings: " dw "x" dh " at " dfps " FPS`n"
@@ -1539,7 +1756,7 @@ ShowConsoleDialog(*) {
     CmdEdit.Focus()
 }
 
-MainGui.OnEvent("Close", (*) => ExitApp())
+MainGui.OnEvent("Close", (*) => MainGui.Hide())
 MainGui.Show("w450")
 
 UpdateStatus()
@@ -1551,7 +1768,6 @@ if IniRead(BootstrapFile, "Setup", "Completed", "0") != "1" {
         ShowSetupChecklist()
 }
 
-SetTimer(CheckForUpdates, -1500)
 
 WriteDriverControls()
 
@@ -1574,7 +1790,7 @@ UpdateLiveMovementMode() {
     MovementMode := MovementModeRequested && !ConsoleDialogOpen && !GameConsoleOpen && validFocus
     if wasActive && !MovementMode {
         ReleaseSprintAlt()
-        ReleaseGhostKeys()
+        ReleaseGhostKeys(true)
     }
 		
     if !IsSet(MovementLiveText) || !IsObject(MovementLiveText)
@@ -1618,8 +1834,17 @@ SetTimer(LockDriverCheckbox, 1000)
 LockDriverCheckbox()
 
 MainTick() {
-    global MovementMode
+    global MovementMode, MovementKeyBinds, ControllerButtonBits
     SyncGhostKeys()
+    word := 0
+    if MovementMode {
+        for action, bit in ControllerButtonBits {
+            scancode := MovementKeyBinds[action]
+            if scancode != "" && GetKeyState(scancode, "P")
+                word |= bit
+        }
+    }
+    SetControllerButtons(word)
 
     if MovementMode && !GetKeyState("LShift", "P")
         ReleaseSprintAlt()
@@ -1627,36 +1852,57 @@ MainTick() {
 SetTimer(MainTick, LookTickMs)
 
 LoadKeyBinds() {
-    global MovementKeyBinds, AllBindActions, MovementKeyDefaults, ConfigFile, BootstrapFile
+    global MovementKeyBinds, AllBindActions, MovementKeyDefaults, ConfigFile, BootstrapFile, ControllerButtonBits, MovementKeyLabels
 
     forbidden := Map("SC029", 1, "SC02A", 1, "SC038", 1, "SC064", 1, "SC065", 1, "SC066", 1,
                      "SC067", 1, "SC068", 1, "SC069", 1, "SC06A", 1, "SC06B", 1, "SC06C", 1,
                      "SC06D", 1, "SC06E", 1, "SC076", 1, "SC048", 1, "SC04C", 1)
+    savedBindings := Map()
 
     for action in AllBindActions {
         sc := MovementKeyDefaults[action]
         saved := IniRead(BootstrapFile, "KeyBinds", action, "")
         if saved = "" && ConfigFile != ""
             saved := IniRead(ConfigFile, "KeyBinds", action, "")
-        if saved != "" {
-            if RegExMatch(saved, "i)^sc[0-9a-f]{3}$") && !forbidden.Has(StrUpper(saved)) && GetKeyName(saved) != ""
+        if (ControllerButtonBits.Has(action) || action = "PressA") && StrLower(saved) = "none"
+            sc := ""
+        else if saved != "" {
+            if RegExMatch(saved, "i)^sc[0-9a-f]{3}$") && !forbidden.Has(StrUpper(saved)) && GetKeyName(saved) != "" {
                 sc := saved
+                savedBindings[action] := true
+            }
             else
                 LogError("LoadKeyBinds: ignoring invalid saved key '" saved "' for " action ", using the default.")
         }
+        ; Preserve an existing shortcut when a controller button's default uses its base key.
+        if !savedBindings.Has(action) && (ControllerButtonBits.Has(action) || action = "PressA") && sc = MovementToggleBaseSC(IniRead(BootstrapFile, "KeyBinds", "MovementModeToggle", "^+m"))
+            sc := ""
         MovementKeyBinds[action] := sc
     }
 
     seen := Map()
     for action in AllBindActions {
         key := StrUpper(MovementKeyBinds[action])
+        if key = ""
+            continue
         if seen.Has(key) {
+            if ControllerButtonBits.Has(action) || action = "PressA" || ControllerButtonBits.Has(seen[key]) {
+                buttonAction := (ControllerButtonBits.Has(action) || action = "PressA") ? action : seen[key]
+                if savedBindings.Has(action) && !savedBindings.Has(seen[key])
+                    buttonAction := seen[key]
+                MovementKeyBinds[buttonAction] := ""
+                LogError("LoadKeyBinds: " buttonAction " conflicts with existing key '" key "', leaving it unbound.")
+                MsgBox(MovementKeyLabels[buttonAction] "'s key is already used by an existing action. That binding was kept; choose a free key in Settings > Keybinds.", "Controller Button Unbound", "Iconi")
+                if buttonAction != action
+                    seen[key] := action
+                continue
+            }
             LogError("LoadKeyBinds: two actions share key '" key "', resetting all keybinds to defaults.")
             for other in AllBindActions
                 MovementKeyBinds[other] := MovementKeyDefaults[other]
             break
         }
-        seen[key] := true
+        seen[key] := action
     }
 }
 
@@ -1673,6 +1919,7 @@ RemapMoveUp(*) {
     SetKeyDelay(-1, -1)
     SendEvent("{Numpad8}")
 }
+
 RemapMoveDown(*) {
     SetKeyDelay(-1, -1)
     SendEvent("{Numpad5}")
@@ -1683,25 +1930,70 @@ MovementOnlyContext(*) {
     return MovementMode
 }
 
+InitControllerButtonsMapping() {
+    global ControllerButtonsMapping, ControllerButtonsView
+    ControllerButtonsMapping := 0
+    ControllerButtonsView := 0
+    try {
+        ControllerButtonsMapping := DllCall("CreateFileMappingW", "Ptr", -1, "Ptr", 0, "UInt", 0x04,
+            "UInt", 0, "UInt", 4, "Str", "Local\SkyrimVRDevkit.ControllerButtons.v1", "Ptr")
+        if ControllerButtonsMapping
+            ControllerButtonsView := DllCall("MapViewOfFile", "Ptr", ControllerButtonsMapping, "UInt", 0x06,
+                "UInt", 0, "UInt", 0, "UPtr", 4, "Ptr")
+        if ControllerButtonsView {
+            NumPut("UInt", 0, ControllerButtonsView)
+            return
+        }
+    }
+    MsgBox("Controller input mapping could not be opened. Shared controller buttons will not be available until the devkit is restarted.", "Controller Input Unavailable", "IconX")
+    if ControllerButtonsMapping
+        DllCall("CloseHandle", "Ptr", ControllerButtonsMapping)
+    ControllerButtonsMapping := 0
+}
+
+SetControllerButtons(word) {
+    global ControllerButtonsView
+    if ControllerButtonsView
+        ; Page-aligned DWORD stores are atomic on Win64; InterlockedExchange is not a DLL export.
+        NumPut("UInt", word, ControllerButtonsView)
+}
+
+CloseControllerButtonsMapping(*) {
+    global ControllerButtonsMapping, ControllerButtonsView
+    SetControllerButtons(0)
+    if ControllerButtonsView
+        DllCall("UnmapViewOfFile", "Ptr", ControllerButtonsView)
+    if ControllerButtonsMapping
+        DllCall("CloseHandle", "Ptr", ControllerButtonsMapping)
+    ControllerButtonsView := 0
+    ControllerButtonsMapping := 0
+}
+
 RegisterMovementHotkeys(oldBinds := "") {
     global MenuActions, ControlActions, MovementKeyBinds
 
     if IsObject(oldBinds) {
         HotIf(MovementOnlyContext)
         for action in MenuActions
-            try Hotkey("*" oldBinds[action], , "Off")
+            if oldBinds[action] != ""
+                try Hotkey("*" oldBinds[action], , "Off")
         for action in ControlActions
-            try Hotkey("*" oldBinds[action], , "Off")
+            if oldBinds[action] != ""
+                try Hotkey("*" oldBinds[action], , "Off")
         try Hotkey("*sc012", , "Off")
         HotIf()
     }
 
     HotIf(MovementOnlyContext)
-    Hotkey("*" MovementKeyBinds["MoveUp"],   RemapMoveUp,   "On")
-    Hotkey("*" MovementKeyBinds["MoveDown"], RemapMoveDown, "On")
+    if MovementKeyBinds["MoveUp"] != ""
+        Hotkey("*" MovementKeyBinds["MoveUp"], RemapMoveUp, "On")
+    if MovementKeyBinds["MoveDown"] != ""
+        Hotkey("*" MovementKeyBinds["MoveDown"], RemapMoveDown, "On")
 
-    for action in ControlActions
-        Hotkey("*" MovementKeyBinds[action], SwallowMovementKey, "On")
+    for action in ControlActions {
+        if MovementKeyBinds[action] != ""
+            Hotkey("*" MovementKeyBinds[action], SwallowMovementKey, "On")
+    }
 
     if MovementKeyBinds["MoveUp"] != "sc012" && MovementKeyBinds["MoveDown"] != "sc012"
         Hotkey("*sc012", SwallowMovementKey, "On")
@@ -1711,8 +2003,11 @@ RegisterMovementHotkeys(oldBinds := "") {
 
 LoadKeyBinds()
 RegisterMovementHotkeys()
+LoadMovementToggleHotkey()
+InitTrayControls()
 
 ;  KEY INTERCEPTION
+
 #HotIf MovementMode
 #InputLevel 1
 $LShift::SprintAlt(true)
@@ -1822,23 +2117,110 @@ WarnIfDriverProblem() {
         what := "The devkit's null driver doesn't look installed (no version marker was found), so SteamVR is probably running its own built-in null driver instead."
     else
         what := "The devkit's null driver is " problem "."
-    answer := MsgBox(what "`n`nWith the wrong driver, the look keys, interact and 'Close Dashboard' will not work, even though Movement Mode says it's on.`n`nOpen the Setup Checklist to fix it?", "Devkit Driver Needed", "YesNo Icon!")
+    answer := MsgBox(what "`n`nWith the wrong driver, the look keys, interact and 'Toggle Dashboard' will not work, even though Movement Mode says it's on.`n`nOpen the Setup Checklist to fix it?", "Devkit Driver Needed", "YesNo Icon!")
     if answer = "Yes"
         ShowSetupChecklist()
 }
 
 ToggleMovementMode(*) {
-    global MovementModeRequested, BtnMovement, GameConsoleOpen
+    global MovementModeRequested, BtnMovement, GameConsoleOpen, MovementToggleHeld, MMNotificationEnabled
     MovementModeRequested := !MovementModeRequested
     GameConsoleOpen := false
     if MovementModeRequested {
+        ; A working shortcut already has the hook; reinstalling here would erase its held-key state.
+        InstallKeybdHook(true, !MovementToggleHeld)
         BtnMovement.Text := "Movement Mode: ON  (Specific keys intercepted.)"
         SetTimer(WarnIfDriverProblem, -1)
     } else {
         BtnMovement.Text := "Movement Mode: OFF  (Keys work normally.)"
         ReleaseGhostKeys()
     }
+    UpdateTrayControls()
+    if MMNotificationEnabled
+        TrayTip("Movement Mode: " (MovementModeRequested ? "ON" : "OFF"), "SkyrimVR Devkit", "Mute")
 }
+
+
+InitTrayControls() {
+    global TrayControlsInitialized, MainGui
+    if TrayControlsInitialized
+        return
+    TrayControlsInitialized := true
+    A_TrayMenu.Delete("E&xit")
+    A_TrayMenu.Add("&Open", (*) => MainGui.Show())
+    A_TrayMenu.Default := "&Open"
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("Launch SteamVR", LaunchSteamVR)
+    A_TrayMenu.Add("Setup Checklist...", ShowSetupChecklist)
+    A_TrayMenu.Add("How To", ShowHowTo)
+    A_TrayMenu.Add("Settings...", OpenSettings)
+    A_TrayMenu.Add("Enable Null Driver in SteamVR", ToggleDriverFromTray)
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("Quick Commands...", ShowQuickCommands)
+    A_TrayMenu.Add("Send Console Command...", ShowConsoleDialog)
+    A_TrayMenu.Add()
+    UpdateTrayControls()
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("Quit", (*) => ExitApp())
+}
+
+UpdateTrayControls() {
+    global TrayControlsInitialized, TrayMovementItemLabel, TrayMovementIconAttemptedState
+    global MovementModeRequested, Active
+    if !TrayControlsInitialized
+        return
+    if Active = "Modded"
+        A_TrayMenu.Check("Enable Null Driver in SteamVR")
+    else
+        A_TrayMenu.Uncheck("Enable Null Driver in SteamVR")
+
+    label := "Movement Mode (" MovementToggleHotkeyDisplay() ")"
+    if TrayMovementItemLabel = "" {
+        A_TrayMenu.Add(label, ToggleMovementMode)
+    } else if TrayMovementItemLabel != label {
+        A_TrayMenu.Rename(TrayMovementItemLabel, label)
+    }
+    TrayMovementItemLabel := label
+    if MovementModeRequested
+        A_TrayMenu.Check(label)
+    else
+        A_TrayMenu.Uncheck(label)
+
+    state := MovementModeRequested ? "ON" : "OFF"
+    if TrayMovementIconAttemptedState != state {
+        iconPath := A_ScriptDir "\icons\MM-" state ".png"
+        try SetFrontendIcon(iconPath)
+        catch as e {
+            SetFrontendIcon(A_IsCompiled ? A_ScriptFullPath : A_AhkPath)
+            LogError("UpdateTrayControls: couldn't load " iconPath ": " e.Message)
+        }
+        TrayMovementIconAttemptedState := state
+    }
+}
+
+SetFrontendIcon(path) {
+    static icons := Map() ; Process-lifetime handles shared by the tray and frontend windows.
+    if !icons.Has(path) {
+        icon := LoadPicture(path, "Icon1", &imageType)
+        if !icon
+            throw Error("Couldn't load application icon: " path)
+        icons[path] := icon
+    }
+    icon := icons[path]
+    TraySetIcon("HICON:*" icon, , true)
+    previous := DetectHiddenWindows(true)
+    try {
+        for hwnd in WinGetList("ahk_pid " DllCall("GetCurrentProcessId")) {
+            if GuiFromHwnd(hwnd) {
+                DllCall("SendMessageW", "Ptr", hwnd, "UInt", 0x80, "Ptr", 0, "Ptr", icon, "Ptr")
+                DllCall("SendMessageW", "Ptr", hwnd, "UInt", 0x80, "Ptr", 1, "Ptr", icon, "Ptr")
+            }
+        }
+    } finally {
+        DetectHiddenWindows(previous)
+    }
+}
+
 
 
 CompareVersions(a, b) {
@@ -2573,6 +2955,14 @@ UpdateStatus(*) {
 
     StatusText.Text := (Active = "Modded") ? "Null driver" : "Original settings"
     ChkDriverEnabled.Value := (Active = "Modded") ? 1 : 0
+    UpdateTrayControls()
+}
+
+ToggleDriverFromTray(*) {
+    global ChkDriverEnabled
+    UpdateStatus()
+    ChkDriverEnabled.Value := !ChkDriverEnabled.Value
+    ToggleDriverEnabled(ChkDriverEnabled)
 }
 
 ToggleDriverEnabled(ctrl, *) {
@@ -2600,6 +2990,10 @@ UpdateCheckEveryHours := 6
 
 UpdateFetch := Map()
 UpdateFetchBusy := false
+; Started only here, once every global the update check reads exists: a timer set earlier could fire while startup
+; is still held (by a dialog) and find them unset.
+SetTimer(CheckForUpdates, -1500)
+
 
 AsyncHttpGet(url) {
     try {
