@@ -24,8 +24,10 @@ constexpr int kKeyInteract   = VK_F20;
 constexpr int kKeyReposition = VK_F21;
 constexpr int kKeyReset      = VK_F22;
 constexpr int kKeyHeartbeat  = VK_F23;
+constexpr int kKeyButtonA    = VK_F24; // Select: the right controller's A and trigger, held as long as the key is (SteamVR's dashboard)
 
 constexpr double kHeartbeatTimeout   = 0.4;   // seconds without a heartbeat change = frontend gone
+constexpr double kButtonANoHeartbeat = 2.0;   // A held without the heartbeat counts this long at most
 constexpr double kInteractTouchGap   = 0.010; // touch, then click this long after
 constexpr double kInteractClickHold  = 0.100; // hold the click this long, then release both (SteamVR only accepts clicks if the touchpad is being touched and clicked at the same time, since it's impossible to do one without the other IRL)
 constexpr double kDefaultTurnSpeed   = 216.0; // degrees per second
@@ -43,6 +45,7 @@ struct Pose {
 struct Keys {
     bool lookUp = false, lookDown = false, lookLeft = false, lookRight = false;
     bool interact = false, reposition = false, reset = false, heartbeat = false;
+    bool buttonA = false;
 
     // Mouse, collected by the Raw Input thread since the last frame.
     long mouseDx = 0, mouseDy = 0;
@@ -71,6 +74,13 @@ struct Shared {
     int    interactState = 0;
     double interactT = 0;
     bool   trackpadTouch = false, trackpadClick = false;
+    bool   buttonA = false, prevButtonA = false;
+    double buttonADown = 0;
+
+    // The game's process id from <Actions>/game_pid.txt (written by the frontend), 0 if none
+    DWORD  gamePid = 0;
+    double lastPidCheck = -1;
+    std::string gameMatch = "none"; // how the focused window was recognised, for driver_status.txt
 
     // settings
     double turnSpeed = kDefaultTurnSpeed;
@@ -275,6 +285,15 @@ inline void Step(Shared& s, const Keys& k, double t)
         s.interactState = 0;
     }
     s.prevInteract = interact;
+
+    // A: held while its ghost key is held. Without the heartbeat (the frontend's own window has focus when its Select
+    // button is clicked, which pauses Movement Mode) only for kButtonANoHeartbeat: a key the frontend pressed is never
+    // released if it dies, and A must not stay held then.
+    if (k.buttonA && !s.prevButtonA) {
+        s.buttonADown = t;
+    }
+    s.prevButtonA = k.buttonA;
+    s.buttonA = k.buttonA && (alive || (t - s.buttonADown) < kButtonANoHeartbeat);
 }
 
 inline void RefreshConfig(Shared& s, double t)
@@ -458,14 +477,33 @@ inline void StopMouseThread()
     m.started = false;
 }
 
+// The game runs as SkyrimVR.exe, or inside a launcher's own process: urSovngarde (the co-op mod, also under its old
+// name SkyrimTogetherVR.exe) loads the game into itself, so the window belongs to the launcher.
 inline bool IsGameExePath(const wchar_t* path)
 {
     const wchar_t* base = wcsrchr(path, L'\\');
     base = base ? base + 1 : path;
-    return _wcsicmp(base, L"SkyrimVR.exe") == 0 || _wcsicmp(base, L"vrcompositor.exe") == 0;
+    return _wcsicmp(base, L"SkyrimVR.exe") == 0 || _wcsicmp(base, L"vrcompositor.exe") == 0
+        || _wcsicmp(base, L"urSovngarde.exe") == 0 || _wcsicmp(base, L"SkyrimTogetherVR.exe") == 0;
 }
 
-inline HWND ForegroundGameWindow(double t)
+// Any other launcher: the frontend finds the game's window and writes its process id to <Actions>/game_pid.txt.
+// Read at most once a second; a missing or empty file means no id.
+inline void RefreshGamePid(Shared& s, double t)
+{
+    if (s.lastPidCheck >= 0 && (t - s.lastPidCheck) < 1.0) {
+        return;
+    }
+    s.lastPidCheck = t;
+    std::ifstream f(ActionsDir() + "game_pid.txt");
+    unsigned long pid = 0;
+    if (!f.is_open() || !(f >> pid)) {
+        pid = 0;
+    }
+    s.gamePid = static_cast<DWORD>(pid);
+}
+
+inline HWND ForegroundGameWindow(Shared& st, double t)
 {
     static HWND lastWnd = nullptr;
     static bool lastOk = false;
@@ -481,15 +519,27 @@ inline HWND ForegroundGameWindow(double t)
     lastWnd = h;
     lastT = t;
     lastOk = false;
+    st.gameMatch = "none";
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
-    if (pid != 0) {
+    if (pid != 0 && pid == st.gamePid) {
+        lastOk = true;
+        st.gameMatch = "pid";
+    }
+    else if (pid != 0) {
         HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
         if (p) {
             wchar_t buf[2 * MAX_PATH];
             DWORD n = static_cast<DWORD>(sizeof(buf) / sizeof(buf[0]));
             if (QueryFullProcessImageNameW(p, 0, buf, &n)) {
                 lastOk = IsGameExePath(buf);
+                if (lastOk) {
+                    const wchar_t* base = wcsrchr(buf, L'\\');
+                    base = base ? base + 1 : buf;
+                    char name[MAX_PATH] = {};
+                    WideCharToMultiByte(CP_UTF8, 0, base, -1, name, sizeof(name) - 1, nullptr, nullptr);
+                    st.gameMatch = name;
+                }
             }
             CloseHandle(p);
         }
@@ -561,6 +611,9 @@ inline std::string BuildStatus(const Shared& s, double t, bool gameFocused)
     o << "keys_ever_seen " << KeyNames(s.seenMask) << "\n";
     o << "keys_held_now " << KeyNames(s.heldMask) << "\n";
     o << "game_focused " << (gameFocused ? 1 : 0) << "\n";
+    o << "game_pid " << s.gamePid << "\n";
+    o << "game_match " << s.gameMatch << "\n";
+    o << "button_a " << (s.buttonA ? 1 : 0) << "\n";
     o << "controls_file_found " << (s.cfgFound ? 1 : 0) << "\n";
     o << "mouse_enabled " << (s.mouseEnabled ? 1 : 0) << "\n";
     o << "mouse_thread_running " << (m.hwnd.load() ? 1 : 0) << "\n";
@@ -611,7 +664,8 @@ inline void Update()
     else {
         StopMouseThread();
     }
-    const HWND gameWnd = ForegroundGameWindow(t);
+    RefreshGamePid(s, t);
+    const HWND gameWnd = ForegroundGameWindow(s, t);
 
     Keys k;
     k.gameFocused = (gameWnd != nullptr);
@@ -629,6 +683,7 @@ inline void Update()
     k.reposition = KeyDown(kKeyReposition);
     k.reset = KeyDown(kKeyReset);
     k.heartbeat = KeyDown(kKeyHeartbeat);
+    k.buttonA = KeyDown(kKeyButtonA);
     if (k.reposition && !s.prevReposition) {
         RefreshViewFile(s);
     }
@@ -670,6 +725,13 @@ inline void GetTrackpad(bool& touch, bool& click)
     std::lock_guard<std::mutex> lock(s.m);
     touch = s.trackpadTouch;
     click = s.trackpadClick;
+}
+
+inline bool GetButtonA()
+{
+    Shared& s = S();
+    std::lock_guard<std::mutex> lock(s.m);
+    return s.buttonA;
 }
 
 inline void SetConsoleView(double x, double y, double z)
