@@ -10,15 +10,17 @@ LookTickMs := 16.66
 ConsoleMS  := 25
 
 MenuActions     := ["MoveUp", "MoveDown"]
-ControlActions  := ["LookUp", "LookDown", "LookLeft", "LookRight", "Interact"]
+ControlActions  := ["LookUp", "LookDown", "LookLeft", "LookRight", "Interact", "PressA"]
 AllBindActions  := []
 for action in MenuActions
     AllBindActions.Push(action)
 for action in ControlActions
     AllBindActions.Push(action)
 
-GhostKeys := Map("LookUp", "F16", "LookDown", "F17", "LookLeft", "F18", "LookRight", "F19", "Interact", "F20")
-GhostHeld := Map("LookUp", false, "LookDown", false, "LookLeft", false, "LookRight", false, "Interact", false)
+; F24: Select, the right controller's A and trigger together (held as long as the key is). SteamVR's dashboard clicks
+; with the trigger where the laser points (aim with the look keys or the mouse), A prompts take A.
+GhostKeys := Map("LookUp", "F16", "LookDown", "F17", "LookLeft", "F18", "LookRight", "F19", "Interact", "F20", "PressA", "F24")
+GhostHeld := Map("LookUp", false, "LookDown", false, "LookLeft", false, "LookRight", false, "Interact", false, "PressA", false)
 GhostReposition := "F21"
 GhostReset      := "F22"
 GhostHeartbeat  := "F23"
@@ -33,7 +35,8 @@ MovementKeyLabels := Map(
     "LookDown",    "Look Down",
     "LookLeft",    "Look Left",
     "LookRight",   "Look Right",
-    "Interact",    "Interact"
+    "Interact",    "Interact",
+    "PressA",      "Select (A)"
 )
 MovementKeyDefaults := Map(
     "MoveUp",      "sc012", ; E
@@ -42,9 +45,67 @@ MovementKeyDefaults := Map(
     "LookDown",    "sc150", ; Down arrow
     "LookLeft",    "sc14B", ; Left arrow
     "LookRight",   "sc14D", ; Right arrow
-    "Interact",    "sc013"  ; R
+    "Interact",    "sc013", ; R
+    "PressA",      "sc022"  ; G
 )
 MovementKeyBinds := Map()
+
+; The game's own exe, and launchers that load the game into their own process (urSovngarde, the co-op mod, also
+; under its old name SkyrimTogetherVR.exe), so the game window belongs to them. More names: [Game] ExtraExes in
+; steam_location.ini, comma separated.
+GameExeNames := ["SkyrimVR.exe", "urSovngarde.exe", "SkyrimTogetherVR.exe"]
+GameGroupReady := false
+
+EnsureGameGroup() {
+    global GameExeNames, GameGroupReady, BootstrapFile
+    if GameGroupReady
+        return
+    GameGroupReady := true
+    if IsSet(BootstrapFile) && BootstrapFile != "" {
+        for extra in StrSplit(IniRead(BootstrapFile, "Game", "ExtraExes", ""), ",", " `t")
+            if extra != ""
+                GameExeNames.Push(extra)
+    }
+    for exe in GameExeNames
+        GroupAdd("SkyrimGame", "ahk_exe " exe)
+}
+
+; The game's process id, 0 when it isn't running
+GamePid() {
+    global GameExeNames
+    EnsureGameGroup()
+    for exe in GameExeNames
+        if pid := ProcessExist(exe)
+            return pid
+    return 0
+}
+
+GameWindowActive() {
+    EnsureGameGroup()
+    return WinActive("ahk_group SkyrimGame") || WinActive("ahk_exe vrcompositor.exe")
+}
+
+; Tells the driver the game's process id (<Actions>/game_pid.txt), which it checks first: the driver then finds the
+; game whatever its process is called. Written only when it changes.
+WriteGamePid() {
+    global ActionDir
+    static last := -1
+    if !IsSet(ActionDir) || ActionDir = "" || !DirExist(ActionDir)
+        return
+    EnsureGameGroup()
+    pid := 0
+    if hwnd := WinExist("ahk_group SkyrimGame")
+        pid := WinGetPID("ahk_id " hwnd)
+    if pid = last
+        return
+    try {
+        f := FileOpen(ActionDir "\game_pid.txt.tmp", "w", "UTF-8-RAW")
+        f.Write(pid)
+        f.Close()
+        FileMove(ActionDir "\game_pid.txt.tmp", ActionDir "\game_pid.txt", 1)
+        last := pid
+    }
+}
 
 ActionDir    := ""
 ControlsFile := ""
@@ -480,6 +541,10 @@ BuildQuickCommandsWindow(x := "", y := "") {
     BtnCloseDash := QuickCommandsGui.AddButton("x15 y15 w200 h28", "Close Dashboard")
     BtnCloseDash.OnEvent("Click", (*) => TestPulse("F13"))
 
+    ; Select: the right controller's A and trigger, for a moment (the Select key holds them as long as it's held)
+    BtnPressA := QuickCommandsGui.AddButton("x15 y+8 w200 h28", "Select (A + trigger)")
+    BtnPressA.OnEvent("Click", (*) => TestPulse("F24"))
+
     BtnNudge := QuickCommandsGui.AddButton("x235 y15 w200 h28", "Move to Console View")
     BtnNudge.OnEvent("Click", MoveToConsoleView)
 
@@ -752,7 +817,7 @@ OpenSettings(*) {
         KeybindButtons[action] := btn
         y += 36
     }
-    SettingsGui.AddButton("x35 y" (140 + 5 * 36 + 6) " w400", "Reset All to Defaults").OnEvent("Click", (*) => ResetKeyBindsToDefaults(KeybindButtons))
+    SettingsGui.AddButton("x35 y" (140 + ControlActions.Length * 36 + 6) " w400", "Reset All to Defaults").OnEvent("Click", (*) => ResetKeyBindsToDefaults(KeybindButtons))
     SettingsTabs.UseTab(4)
     SettingsGui.AddText("x35 y55 w420 cSilver", "These change the devkit's virtual headset. Restart SteamVR after applying. This isn't a benchmark, SteamVR on a desktop is a rough baseline only.")
 
@@ -995,7 +1060,7 @@ OfferCleanSlate() {
         return
     }
 
-    if ProcessExist("SkyrimVR.exe") {
+    if GamePid() {
         MsgBox("SkyrimVR is running. Close the game first (closing Steam would take it down), then open the devkit again; this will be offered again.", "Close the Game First", "IconX")
         return
     }
@@ -1497,8 +1562,8 @@ ReleaseSprintAlt() {
 
 UpdateLiveMovementMode() {
     global MovementModeRequested, MovementMode, ConsoleDialogOpen, MovementLiveText, GameConsoleOpen
-    validFocus := WinActive("ahk_exe SkyrimVR.exe") || WinActive("ahk_exe vrcompositor.exe")
-    if GameConsoleOpen && !ProcessExist("SkyrimVR.exe")
+    validFocus := GameWindowActive()
+    if GameConsoleOpen && !GamePid()
         GameConsoleOpen := false ; the game closed, so its console certainly did
     wasActive := MovementMode
     MovementMode := MovementModeRequested && !ConsoleDialogOpen && !GameConsoleOpen && validFocus
@@ -1526,6 +1591,7 @@ UpdateLiveMovementMode() {
         MovementLiveText.Text := "Live: ACTIVE"
 }
 SetTimer(UpdateLiveMovementMode, 50)
+SetTimer(WriteGamePid, 1000)
 
 MainTick() {
     global MovementMode
@@ -1636,7 +1702,7 @@ GameConsoleKeyContext() {
     global ConsoleCommandBusy
     if IsSet(ConsoleCommandBusy) && ConsoleCommandBusy
         return false
-    return WinActive("ahk_exe SkyrimVR.exe") || WinActive("ahk_exe vrcompositor.exe")
+    return GameWindowActive()
 }
 
 ToggleGameConsole(*) {
@@ -2125,7 +2191,8 @@ SendConsoleCommand(cmd) {
     if ConsoleCommandBusy
         return false
 
-    if !WinExist("ahk_exe SkyrimVR.exe") {
+    EnsureGameGroup()
+    if !WinExist("ahk_group SkyrimGame") {
         MsgBox("Couldn't find SkyrimVR.exe - is the game running?", "Not Found", "IconX")
         return false
     }
@@ -2140,8 +2207,8 @@ SendConsoleCommand(cmd) {
         ReleaseSprintAlt()
         ReleaseGhostKeys()
 
-        WinActivate("ahk_exe SkyrimVR.exe")
-        if !WinWaitActive("ahk_exe SkyrimVR.exe", , 2) {
+        WinActivate("ahk_group SkyrimGame")
+        if !WinWaitActive("ahk_group SkyrimGame", , 2) {
             MsgBox("SkyrimVR window didn't come to the front in time.", "Focus Failed", "IconX")
             return false
         }
@@ -2842,7 +2909,7 @@ SetupStepStates() {
     done["driver"]  := (SetupInstalledVer != "" && !DriverIsOlder(SetupInstalledVer) && DriverDllProblem(DriverDir) = "")
     done["enabled"] := (Active = "Modded")
     done["steamvr"] := ProcessExist("vrserver.exe") ? true : false
-    done["game"]    := ProcessExist("SkyrimVR.exe") ? true : false
+    done["game"]    := GamePid() ? true : false
     done["move"]    := MovementModeRequested ? true : false
     return done
 }
