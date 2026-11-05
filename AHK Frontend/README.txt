@@ -7,7 +7,7 @@ HOW TO RUN:
 1. Download and Install AutoHotKey v2.0 from https://www.autohotkey.com/
 
 2. Double click "SkyrimVR Devkit.ahk" to open the devkit.
-   Keep icons/MM-OFF.png and icons/MM-ON.png beside the script in its icons folder.
+   Keep icons/MM-OFF.png, MM-ON.png and MM-WAIT.png beside the script in its icons folder.
 
 You can open the .ahk file in any text editor to make modifications easily.
 
@@ -30,18 +30,26 @@ controller inputs to an older DLL. Driver version numbering is unchanged here.
   stops. They use a local shared-memory mapping, not extra simulated keyboard keys.
 - Ctrl+Shift+M toggles Movement Mode globally, including while it is off. Change the combination in
   Settings > Keybinds > Movement Mode toggle, then Apply. Reset All restores Ctrl+Shift+M.
-  Conflicts and save failures leave the previous shortcut active.
+  Conflicts and save failures leave the previous shortcut active. The shortcut is also registered with
+  Windows directly, so it still toggles if the keyboard hook misses it.
+- Toggle SteamVR Dashboard (main window, under Movement Mode; also in Quick Commands) opens or closes the
+  dashboard. While it is open, controller buttons go to the dashboard, not the game; look keys still work.
 - Closing the main window hides it in the tray. Open or double-click restores it; Quit exits.
   The tray also provides Movement Mode, Settings, and Enable Null Driver in SteamVR.
   The driver toggle retains the checkbox's backup safeguards and is locked while SteamVR or a supported
   game/launcher runs. Restart SteamVR after changing it; its checkmark shows configuration, not loading.
-- Tray, title-bar and taskbar icons show requested Movement Mode (ON/OFF), including hidden/new windows.
-  Temporary focus/console pauses do not change that icon; the main window's Live line shows active input.
-  Keep both PNG icons when distributing the frontend; no compiled frontend EXE is required.
+- Tray, title-bar and taskbar icons show Movement Mode, including hidden/new windows: OFF, ON (keys go to
+  the game) or WAIT (red-orange: on, but paused because SkyrimVR isn't focused or a console is open).
+  The main window's Live line gives the reason. Keep all three PNG icons when distributing the frontend;
+  no compiled frontend EXE is required.
 - Settings > General > Enable MM Notification is off by default and saved between launches.
   When enabled, toggles request silent Windows tray notifications; Windows may suppress them.
 - Enabling Movement Mode from the window or tray reinstalls the keyboard hook once. The shortcut keeps
-  its existing physical held-key tracking; this is not continuous hook recovery.
+  its existing physical held-key tracking.
+- In game, keys (often Ctrl/Shift) were sometimes not reaching the hook until Movement Mode was toggled.
+  Theory, not proven: another keyboard hook (a mod or overlay) installed after ours doesn't pass them on.
+  Windows runs the newest hook first, so while SkyrimVR is focused and no key is held, the frontend
+  reinstalls its hook every 2 seconds.
 
 OFFLINE CHECKS (from the repository root):
 

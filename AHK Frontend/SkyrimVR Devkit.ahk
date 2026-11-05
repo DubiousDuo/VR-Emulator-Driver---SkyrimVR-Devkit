@@ -516,6 +516,10 @@ BtnMovement.OnEvent("Click", ToggleMovementMode)
 
 MovementLiveText := MainGui.AddText("x15 y+4 w420 cSilver", "Live: off")
 
+BtnMainToggleDash := MainGui.AddButton("x15 y+8 w420 h28", "Toggle SteamVR Dashboard")
+BtnMainToggleDash.OnEvent("Click", (*) => TestPulse("F13"))
+MainGui.AddText("x15 y+4 w420 cSilver", "Controller buttons don't reach the game while the dashboard is open.")
+
 OnSensitivityChange(ctrl, *) {
     global TurnSensitivity
     TurnSensitivity := ctrl.Value / 100.0
@@ -1393,8 +1397,11 @@ SetMovementToggleHotkey(value, persist := true) {
     if combo != oldCombo {
         ; Hotkey() otherwise silently falls back to a hook when Windows rejects a conflict.
         mods := (InStr(combo, "!") ? 1 : 0) | (InStr(combo, "^") ? 2 : 0) | (InStr(combo, "+") ? 4 : 0)
-        if !DllCall("RegisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF, "UInt", mods, "UInt", GetKeyVK(RegExReplace(combo, "^[!+^]+")))
+        SetMovementToggleFallback("") ; our own fallback must not count as a conflict
+        if !DllCall("RegisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF, "UInt", mods, "UInt", GetKeyVK(RegExReplace(combo, "^[!+^]+"))) {
+            SetMovementToggleFallback(oldCombo)
             throw Error("Windows could not register that shortcut. The existing shortcut remains active.")
+        }
         DllCall("UnregisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF)
         if !sameBase
             RegisterMovementToggle(combo, true)
@@ -1405,14 +1412,49 @@ SetMovementToggleHotkey(value, persist := true) {
     } catch as e {
         if !sameBase
             RegisterMovementToggle(combo, false)
+        SetMovementToggleFallback(oldCombo)
         throw Error("The shortcut could not be saved. The existing shortcut remains active.", , e.Message)
     }
     if oldCombo != "" && !sameBase
         RegisterMovementToggle(oldCombo, false)
     MovementToggleHotkey := combo
+    SetMovementToggleFallback(combo)
     if !sameBase
         MovementToggleHeld := false
     UpdateTrayControls()
+}
+
+; The shortcut above lives in the keyboard hook, which sometimes stops seeing keys while the game is focused (Movement
+; Mode keys go dead until it is toggled). A registered hotkey still fires then, and toggling reinstalls the hook. While
+; the hook works, its hotkey blocks the key first, so this one stays quiet.
+SetMovementToggleFallback(combo) {
+    static active := []
+    HotIf()
+    for hk in active
+        try Hotkey(hk, "Off")
+    active := []
+    if combo = ""
+        return
+    mods := RegExReplace(combo, "^([!+^]+).*$", "$1")
+    hk := mods "vk" Format("{:X}", GetKeyVK(RegExReplace(combo, "^[!+^]+")))
+    active.Push(hk)
+    if !InStr(mods, "!")
+        active.Push("!" hk) ; Sprint holds a synthetic Alt while Shift is down.
+    for hk in active
+        try Hotkey(hk, MovementToggleFallback, "On")
+}
+
+MovementToggleFallback(*) {
+    global MovementToggleEdit
+    static last := 0
+    isRepeat := A_TickCount - last < 400 ; Windows repeats a registered hotkey while it is held.
+    last := A_TickCount
+    try {
+        if IsObject(MovementToggleEdit) && MovementToggleEdit.Focused
+            return
+    }
+    if !isRepeat
+        ToggleMovementMode()
 }
 
 LoadMovementToggleHotkey() {
@@ -1792,6 +1834,8 @@ UpdateLiveMovementMode() {
         ReleaseSprintAlt()
         ReleaseGhostKeys(true)
     }
+    if wasActive != MovementMode
+        UpdateTrayControls()
 		
     if !IsSet(MovementLiveText) || !IsObject(MovementLiveText)
         return
@@ -1850,6 +1894,19 @@ MainTick() {
         ReleaseSprintAlt()
 }
 SetTimer(MainTick, LookTickMs)
+
+; In game, the hook sometimes stopped seeing keys (Ctrl/Shift went missing) until Movement Mode was toggled, which
+; reinstalls it: likely another keyboard hook (in the game or an overlay) installed after ours that doesn't pass keys on.
+; The newest hook runs first, so reinstall ours every 2 s while the game is focused and no key is held.
+KeepKeybdHookFirst() {
+    if !GameWindowActive()
+        return
+    loop 0xFE
+        if DllCall("GetAsyncKeyState", "Int", A_Index, "Short") < 0
+            return
+    InstallKeybdHook(true, true)
+}
+SetTimer(KeepKeybdHookFirst, 2000)
 
 LoadKeyBinds() {
     global MovementKeyBinds, AllBindActions, MovementKeyDefaults, ConfigFile, BootstrapFile, ControllerButtonBits, MovementKeyLabels
@@ -2186,7 +2243,8 @@ UpdateTrayControls() {
     else
         A_TrayMenu.Uncheck(label)
 
-    state := MovementModeRequested ? "ON" : "OFF"
+    ; WAIT: on, but not intercepting keys (SkyrimVR not focused, or a console is open).
+    state := !MovementModeRequested ? "OFF" : MovementMode ? "ON" : "WAIT"
     if TrayMovementIconAttemptedState != state {
         iconPath := A_ScriptDir "\icons\MM-" state ".png"
         try SetFrontendIcon(iconPath)
