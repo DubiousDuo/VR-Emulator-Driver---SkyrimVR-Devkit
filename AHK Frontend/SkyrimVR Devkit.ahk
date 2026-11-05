@@ -1242,6 +1242,14 @@ ResetKeyBindsToDefaults(KeybindButtons) {
         KeybindButtons[action].Text := StrUpper(GetKeyName(MovementKeyDefaults[action]))
 }
 
+; Presses and releases a key, held for holdMs (the game must see it down in at least one frame)
+TapKey(key, holdMs) {
+    Send("{" key " down}")
+    Sleep(holdMs)
+    Send("{" key " up}")
+    Sleep(holdMs)
+}
+
 TestPulse(key) {
     GhostSend(key, true)
     Sleep(300)
@@ -2226,22 +2234,30 @@ SendConsoleCommand(cmd) {
         BlockInput("On")
         try {
             SendMode("Event")
+            ; Every key is held for a frame or more: the game reads the keyboard once a frame (30 FPS by default,
+            ; 33 ms), and a press shorter than that can fall between two frames.
+            hold := Max(ConsoleMS, 40)
             if !consoleWasOpen {
-                Send("{sc029}")
-                Sleep(ConsoleMS)
+                TapKey("sc029", hold)
+                ; The console opens over the next frames; what is typed before that is lost.
+                Sleep(Max(ConsoleMS * 4, 150))
             }
+            ; The console key is a dead key on some layouts (^ on German ones): the next key is combined with it, so
+            ; ^ characters end up in the line ("^^tgm" fails without a word). A space ends a pending dead key (as ^ or
+            ; a space), and backspaces clear what it and the console key left. On other layouts the space is just
+            ; deleted again.
+            TapKey("Space", hold)
+            Loop 4
+                TapKey("Backspace", hold)
             Send("{Ctrl down}")
-            Sleep(ConsoleMS)
-            Send("{sc02F down}")
-            Sleep(ConsoleMS)
-            Send("{sc02F up}")
-            Sleep(ConsoleMS)
+            Sleep(hold)
+            TapKey("sc02F", hold)
             Send("{Ctrl up}")
-            Sleep(ConsoleMS)
-            Send("{Enter}")
-            Sleep(ConsoleMS)
+            Sleep(hold)
+            TapKey("Enter", hold)
+            Sleep(hold)
             if !consoleWasOpen
-                Send("{sc029}")
+                TapKey("sc029", hold)
         } finally {
             BlockInput("Off")
             Send("{Ctrl up}")
