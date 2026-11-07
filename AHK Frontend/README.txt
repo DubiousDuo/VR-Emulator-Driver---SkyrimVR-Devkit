@@ -32,7 +32,7 @@ controller inputs to an older DLL. Driver version numbering is unchanged here.
   Settings > Keybinds > Movement Mode toggle, then Apply. Reset All restores Ctrl+Shift+M.
   Conflicts and save failures leave the previous shortcut active. The shortcut is also registered with
   Windows directly, so it still toggles if the keyboard hook misses it.
-- Toggle SteamVR Dashboard (main window, under Movement Mode; also in Quick Commands) opens or closes the
+- Toggle Dashboard (main window, under Movement Mode; also in Quick Commands) opens or closes the
   dashboard. While it is open, controller buttons go to the dashboard, not the game; look keys still work.
 - Closing the main window hides it in the tray. Open or double-click restores it; Quit exits.
   The tray also provides Movement Mode, Settings, and Enable Null Driver in SteamVR.

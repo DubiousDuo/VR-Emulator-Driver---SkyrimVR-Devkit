@@ -262,7 +262,7 @@ CheckDriverToggle() {
 }
 
 CheckWindowIcons() {
-    global MainGui := Gui(), MovementModeRequested, TrayMovementIconAttemptedState := ""
+    global MainGui := Gui(), MovementModeRequested, MovementMode, TrayMovementIconAttemptedState := ""
     global Active := "Original", TrayControlsInitialized, TrayMovementItemLabel
     if !TrayControlsInitialized {
         MovementModeRequested := false

@@ -516,7 +516,7 @@ BtnMovement.OnEvent("Click", ToggleMovementMode)
 
 MovementLiveText := MainGui.AddText("x15 y+4 w420 cSilver", "Live: off")
 
-BtnMainToggleDash := MainGui.AddButton("x15 y+8 w420 h28", "Toggle SteamVR Dashboard")
+BtnMainToggleDash := MainGui.AddButton("x15 y+8 w420 h28", "Toggle Dashboard")
 BtnMainToggleDash.OnEvent("Click", (*) => TestPulse("F13"))
 MainGui.AddText("x15 y+4 w420 cSilver", "Controller buttons don't reach the game while the dashboard is open.")
 
@@ -860,6 +860,9 @@ OpenSettings(*) {
     }
     SettingsGui.AddText("x35 y220 w200", "Movement Mode toggle")
     MovementToggleEdit := SettingsGui.AddHotkey("x35 y+4 w130", MovementToggleHotkey)
+    ; A registered hotkey takes its keys before any window, so pause the fallback while this field has focus.
+    MovementToggleEdit.OnEvent("Focus", (*) => SetMovementToggleFallback(""))
+    MovementToggleEdit.OnEvent("LoseFocus", (*) => SetMovementToggleFallback(MovementToggleHotkey))
     SettingsGui.AddButton("x170 yp-1 w65", "Apply").OnEvent("Click", ApplyMovementToggleHotkey)
     SettingsGui.AddText("x35 y+4 w200 cSilver", "Ctrl/Alt/Shift + key")
     resetY := 146 + Max(MenuActions.Length, ControlActions.Length) * 36
@@ -899,9 +902,10 @@ OpenSettings(*) {
 }
 
 CloseSettingsWindow(*) {
-    global SettingsGui
+    global SettingsGui, MovementToggleHotkey
     try SettingsGui.Destroy()
     SettingsGui := ""
+    SetMovementToggleFallback(MovementToggleHotkey)
 }
 
 WipePathLooksRight(path, requiredEnding) {
@@ -1403,8 +1407,13 @@ SetMovementToggleHotkey(value, persist := true) {
             throw Error("Windows could not register that shortcut. The existing shortcut remains active.")
         }
         DllCall("UnregisterHotKey", "Ptr", A_ScriptHwnd, "Int", 0x7FFF)
-        if !sameBase
-            RegisterMovementToggle(combo, true)
+        if !sameBase {
+            try RegisterMovementToggle(combo, true)
+            catch as e {
+                SetMovementToggleFallback(oldCombo)
+                throw e
+            }
+        }
     }
     try {
         if persist
@@ -1437,24 +1446,21 @@ SetMovementToggleFallback(combo) {
         return
     mods := RegExReplace(combo, "^([!+^]+).*$", "$1")
     hk := mods "vk" Format("{:X}", GetKeyVK(RegExReplace(combo, "^[!+^]+")))
-    active.Push(hk)
-    if !InStr(mods, "!")
-        active.Push("!" hk) ; Sprint holds a synthetic Alt while Shift is down.
-    for hk in active
-        try Hotkey(hk, MovementToggleFallback, "On")
+    try {
+        Hotkey(hk, MovementToggleFallback, "On")
+        active.Push(hk)
+    }
 }
 
 MovementToggleFallback(*) {
-    global MovementToggleEdit
     static last := 0
-    isRepeat := A_TickCount - last < 400 ; Windows repeats a registered hotkey while it is held.
+    ; Windows repeats a registered hotkey while it is held (first repeat after up to ~1 s).
+    isRepeat := A_TickCount - last < 1100
     last := A_TickCount
-    try {
-        if IsObject(MovementToggleEdit) && MovementToggleEdit.Focused
-            return
-    }
-    if !isRepeat
-        ToggleMovementMode()
+    if isRepeat
+        return
+    LogError("Movement Mode shortcut reached only the registered fallback (keyboard hook missed it)")
+    ToggleMovementMode()
 }
 
 LoadMovementToggleHotkey() {
@@ -1897,12 +1903,18 @@ SetTimer(MainTick, LookTickMs)
 
 ; In game, the hook sometimes stopped seeing keys (Ctrl/Shift went missing) until Movement Mode was toggled, which
 ; reinstalls it: likely another keyboard hook (in the game or an overlay) installed after ours that doesn't pass keys on.
-; The newest hook runs first, so reinstall ours every 2 s while the game is focused and no key is held.
+; The newest hook runs first, so reinstall ours every 2 s while the game is focused and no key is held. Reinstalling
+; erases the hook's held-key state, so also count keys it swallows (they never reach the system's key state), and skip
+; the devkit's own ghost keys F13-F24 (the heartbeat is down half the time).
 KeepKeybdHookFirst() {
+    global MovementKeyBinds
     if !GameWindowActive()
         return
     loop 0xFE
-        if DllCall("GetAsyncKeyState", "Int", A_Index, "Short") < 0
+        if (A_Index < 0x7C || A_Index > 0x87) && DllCall("GetAsyncKeyState", "Int", A_Index, "Short") < 0
+            return
+    for action, scancode in MovementKeyBinds
+        if scancode != "" && GetKeyState(scancode, "P")
             return
     InstallKeybdHook(true, true)
 }
