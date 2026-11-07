@@ -147,7 +147,7 @@ in the middle of the game window and moving the mouse turns the view. Right clic
 itself off (and gives your cursor back) whenever Movement Mode pauses, you click away from the game or the
 devkit closes. The null driver does all of this, not this script. Sensitivity, invert Y and an off switch are in
 Settings > Controls. The first time you open this version it asks for your consent to the mouse capture, saying
-No just switches mouse look off.
+No just switches mouse look off. In dialogue, scroll the mouse wheel to move between options.
 
 A NEW LAYOUT
 
