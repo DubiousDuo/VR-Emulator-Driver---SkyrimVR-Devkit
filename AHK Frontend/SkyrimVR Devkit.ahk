@@ -861,8 +861,7 @@ OpenSettings(*) {
     SettingsGui.AddText("x35 y220 w200", "Movement Mode toggle")
     MovementToggleEdit := SettingsGui.AddHotkey("x35 y+4 w130", MovementToggleHotkey)
     ; A registered hotkey takes its keys before any window, so pause the fallback while this field has focus.
-    MovementToggleEdit.OnEvent("Focus", (*) => SetMovementToggleFallback(""))
-    MovementToggleEdit.OnEvent("LoseFocus", (*) => SetMovementToggleFallback(MovementToggleHotkey))
+    SetMovementToggleFallback("") ; Hotkey controls have no Focus event; pause the fallback while Settings is open so the field can capture the combo
     SettingsGui.AddButton("x170 yp-1 w65", "Apply").OnEvent("Click", ApplyMovementToggleHotkey)
     SettingsGui.AddText("x35 y+4 w200 cSilver", "Ctrl/Alt/Shift + key")
     resetY := 146 + Max(MenuActions.Length, ControlActions.Length) * 36
