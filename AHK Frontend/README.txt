@@ -7,6 +7,7 @@ HOW TO RUN:
 1. Download and Install AutoHotKey v2.0 from https://www.autohotkey.com/
 
 2. Double click "SkyrimVR Devkit.ahk" to open the devkit.
+   Keep icons/MM-OFF.png, MM-ON.png and MM-WAIT.png beside the script in its icons folder.
 
 You can open the .ahk file in any text editor to make modifications easily.
 
@@ -15,6 +16,50 @@ FIRST TIME SETUP:
 The devkit opens a Setup Checklist by itself the first time. It walks you through everything, including
 downloading the null driver (the "Download / Install" button, also under Settings). This version needs the
 v2.0.2 null driver, so if you used an older devkit, update the driver there too (the devkit tells you).
+
+============================================================
+CONTROLLER AND TRAY CONTROLS
+============================================================
+
+These controls need a driver rebuilt from the matching source. The frontend alone cannot add
+controller inputs to an older DLL. Driver version numbering is unchanged here.
+
+- Select defaults to G; Right Grip defaults to H. Left Pad Click and Left Pad Touch start unbound.
+  Change them in Settings > Keybinds; Backspace clears a binding. Existing saved bindings win over
+  conflicting defaults. The new controller buttons release when Movement Mode pauses or its heartbeat
+  stops. They use a local shared-memory mapping, not extra simulated keyboard keys.
+- Ctrl+Shift+M toggles Movement Mode globally, including while it is off. Change the combination in
+  Settings > Keybinds > Movement Mode toggle, then Apply. Reset All restores Ctrl+Shift+M.
+  Conflicts and save failures leave the previous shortcut active. The shortcut is also registered with
+  Windows directly, so it still toggles if the keyboard hook misses it.
+- Toggle Dashboard (main window, under Movement Mode; also in Quick Commands) opens or closes the
+  dashboard. While it is open, controller buttons go to the dashboard, not the game; look keys still work.
+- Closing the main window hides it in the tray. Open or double-click restores it; Quit exits.
+  The tray also provides Movement Mode, Settings, and Enable Null Driver in SteamVR.
+  The driver toggle retains the checkbox's backup safeguards and is locked while SteamVR or a supported
+  game/launcher runs. Restart SteamVR after changing it; its checkmark shows configuration, not loading.
+- Tray, title-bar and taskbar icons show Movement Mode, including hidden/new windows: OFF, ON (keys go to
+  the game) or WAIT (red-orange: on, but paused because SkyrimVR isn't focused or a console is open).
+  The main window's Live line gives the reason. Keep all three PNG icons when distributing the frontend;
+  no compiled frontend EXE is required.
+- Settings > General > Enable MM Notification is off by default and saved between launches.
+  When enabled, toggles request silent Windows tray notifications; Windows may suppress them.
+- Enabling Movement Mode from the window or tray reinstalls the keyboard hook once. The shortcut keeps
+  its existing physical held-key tracking.
+- In game, keys (often Ctrl/Shift) were sometimes not reaching the hook until Movement Mode was toggled.
+  Theory, not proven: another keyboard hook (a mod or overlay) installed after ours doesn't pass them on.
+  Windows runs the newest hook first, so while SkyrimVR is focused and no key is held, the frontend
+  reinstalls its hook every 2 seconds.
+
+OFFLINE CHECKS (from the repository root):
+
+- python tests/frontend_tray_check.py (Windows and AutoHotkey v2).
+  Runs the real frontend functions on a separate, non-input desktop with temporary files. Checks
+  shortcut conflicts/persistence, Select binding precedence/pulses, launcher PID publication and icons.
+  VR-session lock and driver-backup checks are skipped if SteamVR is running; close it to run them.
+  It does not start SteamVR, send game input or write your settings.
+- Compile and run tests/grip_input_check.cpp with the Windows C++ toolchain and OpenVR headers.
+  Exercises shared-memory buttons and heartbeat safety without loading SteamVR.
 
 ============================================================
 WHAT'S NEW IN v2.0.2 (since v2.0.1)
@@ -102,7 +147,7 @@ in the middle of the game window and moving the mouse turns the view. Right clic
 itself off (and gives your cursor back) whenever Movement Mode pauses, you click away from the game or the
 devkit closes. The null driver does all of this, not this script. Sensitivity, invert Y and an off switch are in
 Settings > Controls. The first time you open this version it asks for your consent to the mouse capture, saying
-No just switches mouse look off.
+No just switches mouse look off. In dialogue, scroll the mouse wheel to move between options.
 
 A NEW LAYOUT
 
